@@ -25,7 +25,7 @@ export async function updateSensors(
       await postJson(
         `${opts.apiBase ?? HA_API}/states/${sensorId(item)}`,
         {
-          state: stores.length > 0 ? "in_stock" : "unavailable",
+          state: stores.length > 0 ? "in_stock" : "out_of_stock",
           attributes: {
             friendly_name: `HypeBot ${item.productName} ${item.variantName}`,
             icon: "mdi:cellphone",

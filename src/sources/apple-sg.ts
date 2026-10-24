@@ -124,19 +124,43 @@ export function parsePickup(body: string, items: WatchItem[], storeFilter: strin
   }));
 }
 
-export function createAppleSg(opts: { stores: string[] }): Source {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Load a product's model list. Apple occasionally refuses a request with its
+ * "Page Not Found" page, so try a few times before reporting a failure.
+ */
+async function loadCatalogue(product: string, attempts: number, retryDelayMs: number): Promise<Catalogue> {
+  const url = buyUrl(product);
+  let status = 0;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await sleep(retryDelayMs);
+    const page = await fetchText(url);
+    status = page.status;
+    const cat = page.status === 200 ? parseCatalogue(page.body) : undefined;
+    if (cat && cat.entries.length > 0) return cat;
+  }
+  throw new Error(`Could not read models for "${product}" from ${url} (HTTP ${status})`);
+}
+
+/** Store names Apple returned that a filter entry should match. */
+function storeNames(body: string): string[] {
+  const data = JSON.parse(body) as PickupResponse;
+  return (data.body?.stores ?? []).map((s) => s.storeName);
+}
+
+export function createAppleSg(opts: { stores: string[]; retryDelayMs?: number }): Source {
+  const retryDelayMs = opts.retryDelayMs ?? 5_000;
+  let filterChecked = opts.stores.length === 0;
+
   return {
     name: "apple_sg",
+    label: "Apple SG",
 
     async resolve(entries: WatchConfig[]): Promise<WatchItem[]> {
       const items = new Map<string, WatchItem>();
       for (const entry of entries) {
-        const url = buyUrl(entry.product);
-        const page = await fetchText(url);
-        const cat = page.status === 200 ? parseCatalogue(page.body) : { productName: "", entries: [] };
-        if (cat.entries.length === 0) {
-          throw new Error(`Could not read models for "${entry.product}" from ${url} (HTTP ${page.status})`);
-        }
+        const cat = await loadCatalogue(entry.product, 3, retryDelayMs);
         for (const variant of entry.variants) {
           const e = matchVariant(cat, variant);
           const id = `apple_sg:${e.partNumber}`;
@@ -144,11 +168,12 @@ export function createAppleSg(opts: { stores: string[] }): Source {
           items.set(id, {
             id,
             source: "apple_sg",
+            shop: "Apple SG",
             product: entry.product,
             productName: cat.productName,
             variantName: variantLabel(e),
             partNumber: e.partNumber,
-            buyUrl: url,
+            buyUrl: buyUrl(entry.product),
           });
         }
       }
@@ -158,7 +183,19 @@ export function createAppleSg(opts: { stores: string[] }): Source {
     async check(items: WatchItem[]): Promise<Availability[]> {
       const res = await fetchText(pickupUrl(items.map((i) => i.partNumber)));
       if (res.status !== 200) throw new Error(`Apple SG returned HTTP ${res.status}`);
-      return parsePickup(res.body, items, opts.stores);
+      const result = parsePickup(res.body, items, opts.stores);
+
+      // A typo in apple_sg_stores would otherwise silently mean "never in stock".
+      if (!filterChecked) {
+        filterChecked = true;
+        const names = storeNames(res.body);
+        const known = new Set(names.map((n) => n.toLowerCase()));
+        const unknown = opts.stores.filter((s) => !known.has(s.trim().toLowerCase()));
+        if (unknown.length > 0) {
+          console.warn(`apple_sg_stores: ${unknown.map((s) => `"${s}"`).join(", ")} matches no store. Store names are: ${names.join(", ")}`);
+        }
+      }
+      return result;
     },
   };
 }

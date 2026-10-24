@@ -9,6 +9,7 @@ import type { Availability, WatchItem } from "../src/types.js";
 const item: WatchItem = {
   id: "apple_sg:MK2G4X/A",
   source: "apple_sg",
+  shop: "Apple SG",
   product: "iphone-duo",
   productName: "iPhone Duo",
   variantName: "Night Sky 512GB",

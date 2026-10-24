@@ -2,7 +2,7 @@
 
 /** One `watch` entry from the add-on settings. */
 export interface WatchConfig {
-  source: "apple_sg";
+  source: string; // which shop, e.g. "apple_sg"
   product: string; // slug in the shop URL, e.g. "iphone-duo"
   variants: string[]; // e.g. "Star White / 512GB"
 }
@@ -11,6 +11,7 @@ export interface WatchConfig {
 export interface WatchItem {
   id: string; // stable, e.g. "apple_sg:MK2G4X/A"
   source: string;
+  shop: string; // shown in alerts, e.g. "Apple SG"
   product: string;
   productName: string; // "iPhone Duo"
   variantName: string; // "Night Sky 512GB"
@@ -30,7 +31,8 @@ export interface Availability {
 }
 
 export interface Source {
-  name: string;
+  name: string; // matches `source` in the watch settings, e.g. "apple_sg"
+  label: string; // shown in alerts, e.g. "Apple SG"
   /** Turn settings into watch items. Throws if a name matches nothing. */
   resolve(entries: WatchConfig[]): Promise<WatchItem[]>;
   /** Current availability for every item passed in. Throws on any failure. */

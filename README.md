@@ -69,7 +69,7 @@ nothing, the add-on log lists every valid option and you get one alert.
 
 One sensor per model, e.g. `sensor.hypebot_iphone_duo_night_sky_512gb`:
 
-- state: `in_stock` or `unavailable`
+- state: `in_stock` or `out_of_stock`
 - attributes: `stores`, `quote` (Apple's wording, e.g. "Available Today"),
   `part_number`, `buy_url`, `last_checked`
 
@@ -111,7 +111,7 @@ node dist/main.js --test-notify   # send a test alert and exit
 ```
 
 Adding a shop: implement `Source` (`src/types.ts`) in `src/sources/` and
-register it in `src/main.ts`. Notifiers and sensors need no changes.
+add it to `SOURCES` in `src/main.ts` (and to the `source` list in `config.yaml`). Notifiers and sensors need no changes.
 
 ## Releasing
 

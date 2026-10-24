@@ -12,6 +12,7 @@ const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, imp
 const item = (partNumber: string, variantName = "Night Sky 512GB"): WatchItem => ({
   id: `apple_sg:${partNumber}`,
   source: "apple_sg",
+  shop: "Apple SG",
   product: "iphone-duo",
   productName: "iPhone Duo",
   variantName,
@@ -91,5 +92,28 @@ describe("appleSg.check", () => {
     vi.mocked(fetchText).mockResolvedValue({ status: 200, body: fixture("pickup-available.json") });
     const [a] = await createAppleSg({ stores: ["Jewel Changi Airport"] }).check([nightSky512]);
     expect(a.stores.map((s) => s.name)).toEqual(["Jewel Changi Airport"]);
+  });
+});
+
+describe("store filter typos", () => {
+  beforeEach(() => vi.mocked(fetchText).mockReset());
+
+  it("warns once, listing real store names, when a filter entry matches no store", async () => {
+    vi.mocked(fetchText).mockResolvedValue({ status: 200, body: fixture("pickup-available.json") });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const source = createAppleSg({ stores: ["Orchard", "Jewel Changi Airport"] });
+    await source.check([nightSky512]);
+    await source.check([nightSky512]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/"Orchard"[\s\S]*Orchard Road, Marina Bay Sands, Jewel Changi Airport/);
+    warn.mockRestore();
+  });
+
+  it("does not warn when every filter entry matches", async () => {
+    vi.mocked(fetchText).mockResolvedValue({ status: 200, body: fixture("pickup-available.json") });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await createAppleSg({ stores: ["orchard road"] }).check([nightSky512]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

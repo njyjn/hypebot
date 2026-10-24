@@ -56,6 +56,12 @@ describe("format", () => {
     expect(m.url).toBeUndefined();
   });
 
+  it("names the item's own shop in the title", () => {
+    const item = { ...nightSky, shop: "Other Shop" };
+    expect(formatStockAlert([{ item, stores: [{ name: "Main St", quote: "In stock" }] }]).title).toBe("🟢 iPhone Duo in stock (Other Shop)");
+    expect(formatSoldOut([item]).title).toBe("⚪ iPhone Duo sold out (Other Shop)");
+  });
+
   it("formats sold-out and status messages", () => {
     expect(formatSoldOut([nightSky])).toEqual({ title: "⚪ iPhone Duo sold out (Apple SG)", lines: ["Night Sky 512GB"] });
     expect(formatStatus("HypeBot test alert", "Alerts are working.")).toEqual({ title: "HypeBot test alert", lines: ["Alerts are working."] });

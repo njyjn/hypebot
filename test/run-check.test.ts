@@ -17,6 +17,7 @@ function ctx(results: (Availability[] | Error)[], opts: { notifySoldOut?: boolea
   const sensors = vi.fn(async () => {});
   const source: Source = {
     name: "apple_sg",
+    label: "Apple SG",
     resolve: async () => [item],
     check: async () => {
       const r = results.shift();
@@ -26,10 +27,8 @@ function ctx(results: (Availability[] | Error)[], opts: { notifySoldOut?: boolea
   };
   const c: Ctx = {
     cfg,
-    source,
-    items: [item],
+    groups: [{ source, items: [item], failures: new FailureTracker() }],
     notifiers: [{ name: "fake", send: async (m) => void sent.push(m) }],
-    failures: new FailureTracker(),
     state: {},
     sensors,
   };
@@ -85,5 +84,31 @@ describe("runCheck", () => {
     await runCheck(loud.c);
     await runCheck(loud.c);
     expect(loud.sent.map((m) => m.title)).toEqual(["🟢 iPhone Duo in stock (Apple SG)", "⚪ iPhone Duo sold out (Apple SG)"]);
+  });
+});
+
+describe("runCheck with several shops", () => {
+  it("keeps alerting for one shop while another is failing, and keeps the failing shop's state", async () => {
+    const other = { ...duoItem("X1", "Red 128GB", "phone-x", "Phone X"), id: "other:X1", source: "other", shop: "Other Shop" };
+    const statePath = join(mkdtempSync(join(tmpdir(), "hb-")), "state.json");
+    const cfg = { ...loadConfig({ OPTIONS_PATH: "/nonexistent" }), statePath };
+    const sent: AlertMessage[] = [];
+    const ok: Source = { name: "apple_sg", label: "Apple SG", resolve: async () => [item], check: async () => inStock };
+    const broken: Source = { name: "other", label: "Other Shop", resolve: async () => [other], check: async () => Promise.reject(new Error("down")) };
+    const c: Ctx = {
+      cfg,
+      groups: [
+        { source: ok, items: [item], failures: new FailureTracker() },
+        { source: broken, items: [other], failures: new FailureTracker(1) },
+      ],
+      notifiers: [{ name: "fake", send: async (m) => void sent.push(m) }],
+      state: { [other.id]: ["Somewhere"] },
+      sensors: async () => {},
+    };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCheck(c);
+    err.mockRestore();
+    expect(sent.map((m) => m.title)).toEqual(["⚠️ HypeBot can't reach Other Shop", "🟢 iPhone Duo in stock (Apple SG)"]);
+    expect(loadState(statePath)).toEqual({ [item.id]: ["Orchard Road"], [other.id]: ["Somewhere"] });
   });
 });

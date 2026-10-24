@@ -40,6 +40,7 @@ export async function fakeServer(reply: (req: Captured) => { status?: number; bo
 export const duoItem = (partNumber: string, variantName: string, product = "iphone-duo", productName = "iPhone Duo"): WatchItem => ({
   id: `apple_sg:${partNumber}`,
   source: "apple_sg",
+  shop: "Apple SG",
   product,
   productName,
   variantName,

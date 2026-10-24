@@ -47,7 +47,7 @@ describe("updateSensors", () => {
         last_checked: "2026-10-24T05:00:00.000Z",
       },
     });
-    expect(s.requests[1].body.state).toBe("unavailable");
+    expect(s.requests[1].body.state).toBe("out_of_stock");
     expect(s.requests[1].body.attributes.stores).toEqual([]);
     expect(s.requests[1].body.attributes.quote).toBe("");
   });

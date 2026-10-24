@@ -4,42 +4,62 @@ import { sendAll } from "./notifiers/index.js";
 import { saveState, type StockState } from "./state.js";
 import type { Availability, Notifier, Source, StoreStock, WatchItem } from "./types.js";
 
-export interface Ctx {
-  cfg: Config;
+/** One shop and the items watched there. Each shop fails and backs off on its own. */
+export interface Group {
   source: Source;
   items: WatchItem[];
-  notifiers: Notifier[];
   failures: FailureTracker;
+}
+
+export interface Ctx {
+  cfg: Config;
+  groups: Group[];
+  notifiers: Notifier[];
   state: StockState;
   sensors: (items: WatchItem[], now: Availability[]) => Promise<void>;
 }
 
-const SHOP_LABEL = "Apple SG";
-
-/** One pass: check, alert on changes, update sensors, remember the result. */
+/** One pass over every shop: check, alert on changes, update sensors, remember the result. */
 export async function runCheck(ctx: Ctx): Promise<void> {
-  let now: Availability[];
-  try {
-    now = await ctx.source.check(ctx.items);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    console.error(`Check failed: ${reason}`);
-    if (ctx.failures.fail() === "alert") {
-      await sendAll(ctx.notifiers, formatStatus(`⚠️ HypeBot can't reach ${SHOP_LABEL}`, `Last 10 checks failed. Latest error: ${reason}`));
+  const checkedItems: WatchItem[] = [];
+  const now: Availability[] = [];
+  const failed = new Set<Group>();
+
+  for (const group of ctx.groups) {
+    const label = group.source.label;
+    try {
+      now.push(...(await group.source.check(group.items)));
+      checkedItems.push(...group.items);
+    } catch (error) {
+      failed.add(group);
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(`${label} check failed: ${reason}`);
+      if (group.failures.fail() === "alert") {
+        await sendAll(ctx.notifiers, formatStatus(`⚠️ HypeBot can't reach ${label}`, `Last ${group.failures.threshold} checks failed. Latest error: ${reason}`));
+      }
+      continue;
     }
-    return;
+    if (group.failures.succeed() === "recovered") {
+      await sendAll(ctx.notifiers, formatStatus("✅ HypeBot is back to normal", `Checking ${label} stock again.`));
+    }
   }
+  if (checkedItems.length === 0) return;
 
-  if (ctx.failures.succeed() === "recovered") {
-    await sendAll(ctx.notifiers, formatStatus("✅ HypeBot is back to normal", `Checking ${SHOP_LABEL} stock again.`));
-  }
-
-  const changes = diffAvailability(ctx.items, ctx.state, now);
+  const changes = diffAvailability(checkedItems, ctx.state, now);
   if (changes.newlyInStock.length > 0) await sendAll(ctx.notifiers, formatStockAlert(changes.newlyInStock));
   if (ctx.cfg.notifySoldOut && changes.soldOut.length > 0) await sendAll(ctx.notifiers, formatSoldOut(changes.soldOut));
 
-  await ctx.sensors(ctx.items, now);
-  ctx.state = changes.next;
+  await ctx.sensors(checkedItems, now);
+
+  // Shops that failed keep what we last knew; items no longer watched drop out.
+  const next: StockState = {};
+  for (const group of ctx.groups) {
+    for (const item of group.items) {
+      const known = failed.has(group) ? ctx.state[item.id] : changes.next[item.id];
+      if (known) next[item.id] = known;
+    }
+  }
+  ctx.state = next;
   try {
     saveState(ctx.cfg.statePath, ctx.state);
   } catch (error) {
@@ -47,7 +67,7 @@ export async function runCheck(ctx: Ctx): Promise<void> {
   }
 
   const inStock = now.filter((a) => a.stores.length > 0).length;
-  console.log(`${new Date().toISOString()} checked ${ctx.items.length} item(s), ${inStock} in stock`);
+  console.log(`${new Date().toISOString()} checked ${checkedItems.length} item(s), ${inStock} in stock`);
 }
 
 export interface Changes {
@@ -83,7 +103,7 @@ export class FailureTracker {
   private count = 0;
   private alerted = false;
 
-  constructor(private readonly threshold = 10) {}
+  constructor(readonly threshold = 10) {}
 
   fail(): "alert" | null {
     this.count++;

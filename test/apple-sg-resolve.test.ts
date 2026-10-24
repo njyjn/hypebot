@@ -62,6 +62,7 @@ describe("appleSg.resolve", () => {
       {
         id: "apple_sg:MK2G4X/A",
         source: "apple_sg",
+        shop: "Apple SG",
         product: "iphone-duo",
         productName: "iPhone Duo",
         variantName: "Night Sky 512GB",
@@ -81,7 +82,38 @@ describe("appleSg.resolve", () => {
   it("fails when the product page cannot be loaded", async () => {
     vi.mocked(fetchText).mockResolvedValue({ status: 404, body: "<!doctype html>Page Not Found" });
     await expect(
-      createAppleSg({ stores: [] }).resolve([{ source: "apple_sg", product: "iphone-nope", variants: ["White / 256GB"] }]),
+      createAppleSg({ stores: [], retryDelayMs: 0 }).resolve([{ source: "apple_sg", product: "iphone-nope", variants: ["White / 256GB"] }]),
     ).rejects.toThrow(/iphone-nope/);
+  });
+});
+
+describe("appleSg.resolve retries", () => {
+  beforeEach(() => vi.mocked(fetchText).mockReset());
+
+  it("retries a refused product page before giving up", async () => {
+    vi.mocked(fetchText)
+      .mockResolvedValueOnce({ status: 404, body: "<!doctype html>Page Not Found" })
+      .mockResolvedValueOnce({ status: 200, body: html });
+    const items = await createAppleSg({ stores: [], retryDelayMs: 0 }).resolve([
+      { source: "apple_sg", product: "iphone-duo", variants: ["Night Sky / 512GB"] },
+    ]);
+    expect(items).toHaveLength(1);
+    expect(fetchText).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after 3 attempts", async () => {
+    vi.mocked(fetchText).mockResolvedValue({ status: 404, body: "<!doctype html>Page Not Found" });
+    await expect(
+      createAppleSg({ stores: [], retryDelayMs: 0 }).resolve([{ source: "apple_sg", product: "iphone-duo", variants: ["Night Sky / 512GB"] }]),
+    ).rejects.toThrow(/HTTP 404/);
+    expect(fetchText).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry a name that matches no model", async () => {
+    vi.mocked(fetchText).mockResolvedValue({ status: 200, body: html });
+    await expect(
+      createAppleSg({ stores: [], retryDelayMs: 0 }).resolve([{ source: "apple_sg", product: "iphone-duo", variants: ["Gold / 512GB"] }]),
+    ).rejects.toThrow(/Gold/);
+    expect(fetchText).toHaveBeenCalledTimes(1);
   });
 });
