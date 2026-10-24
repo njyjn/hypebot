@@ -79,6 +79,51 @@ export function matchVariant(cat: Catalogue, variant: string): CatalogueEntry {
   throw new Error(`"${variant}" does not match one ${cat.productName || "product"} model. Use "Colour / Capacity", one of: ${valid}`);
 }
 
+// Any Singapore postcode returns all three stores; this one is Orchard Road.
+const POSTCODE = "238859";
+
+export function pickupUrl(parts: string[]): string {
+  const q = new URLSearchParams({ pl: "true", location: POSTCODE });
+  parts.forEach((p, i) => q.set(`parts.${i}`, p));
+  return `${SHOP}/retail/pickup-message?${q}`;
+}
+
+interface PickupResponse {
+  body?: {
+    stores?: {
+      storeName: string;
+      partsAvailability?: Record<string, { pickupDisplay?: string; pickupSearchQuote?: string }>;
+    }[];
+  };
+}
+
+/**
+ * Read a pickup-message response. Apple sometimes answers with an HTML
+ * "Page Not Found" page when it refuses a request; that throws, so the
+ * caller counts it as a failed check rather than "nothing in stock".
+ */
+export function parsePickup(body: string, items: WatchItem[], storeFilter: string[]): Availability[] {
+  let data: PickupResponse;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new Error("Apple SG did not return stock data (got a web page instead)");
+  }
+  const stores = data.body?.stores;
+  if (!Array.isArray(stores)) throw new Error("Apple SG stock data has no store list");
+
+  const wanted = storeFilter.map((s) => s.trim().toLowerCase());
+  const included = stores.filter((s) => wanted.length === 0 || wanted.includes(s.storeName.toLowerCase()));
+
+  return items.map((item) => ({
+    itemId: item.id,
+    stores: included.flatMap((s) => {
+      const a = s.partsAvailability?.[item.partNumber];
+      return a?.pickupDisplay === "available" ? [{ name: s.storeName, quote: a.pickupSearchQuote ?? "Available" }] : [];
+    }),
+  }));
+}
+
 export function createAppleSg(opts: { stores: string[] }): Source {
   return {
     name: "apple_sg",
@@ -110,9 +155,10 @@ export function createAppleSg(opts: { stores: string[] }): Source {
       return [...items.values()];
     },
 
-    async check(_items: WatchItem[]): Promise<Availability[]> {
-      void opts;
-      throw new Error("not implemented");
+    async check(items: WatchItem[]): Promise<Availability[]> {
+      const res = await fetchText(pickupUrl(items.map((i) => i.partNumber)));
+      if (res.status !== 200) throw new Error(`Apple SG returned HTTP ${res.status}`);
+      return parsePickup(res.body, items, opts.stores);
     },
   };
 }
