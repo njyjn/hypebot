@@ -1,6 +1,6 @@
 import { loadConfig, type Config } from "./config.js";
 import { formatStatus } from "./format.js";
-import { updateSensors } from "./ha-sensors.js";
+import { updateHealthSensor, updateSensors } from "./ha-sensors.js";
 import { buildNotifiers, sendAll } from "./notifiers/index.js";
 import { createAppleSg } from "./sources/apple-sg.js";
 import { loadState } from "./state.js";
@@ -98,6 +98,11 @@ async function main() {
     notifiers,
     state: loadState(cfg.statePath),
     sensors: (its, now) => updateSensors(its, now, { token: process.env.SUPERVISOR_TOKEN, checkedAt: new Date() }),
+    healthSensor: (g, s) =>
+      updateHealthSensor(g.source.name, g.source.label, s, {
+        token: process.env.SUPERVISOR_TOKEN,
+        waitSeconds: Math.round(g.failures.delayMs(cfg.intervalSeconds * 1000) / 1000),
+      }),
   };
 
   for (;;) {

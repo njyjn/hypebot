@@ -70,8 +70,13 @@ describe("runCheck", () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     for (let i = 0; i < 12; i++) await runCheck(c);
     err.mockRestore();
-    expect(sent.map((m) => m.title)).toEqual(["⚠️ HypeBot can't reach Apple SG", "✅ HypeBot is back to normal"]);
-    expect(sent[0].lines[0]).toContain("HTTP 541");
+    // The share-of-failures warning fires first (5th failure), then the full-block alert (10th).
+    expect(sent.map((m) => m.title)).toEqual([
+      "⚠️ Apple SG is refusing some checks",
+      "⚠️ HypeBot can't reach Apple SG",
+      "✅ HypeBot is back to normal",
+    ]);
+    expect(sent[1].lines[0]).toContain("HTTP 541");
   });
 
   it("stays quiet on a sell-out unless notify_sold_out is on", async () => {
@@ -152,3 +157,37 @@ describe("reminders while still in stock", () => {
     expect(r.sent).toHaveLength(1);
   });
 });
+
+describe("health reporting", () => {
+  it("publishes health after both successful and failed checks", async () => {
+    const { c } = ctx([inStock, new Error("Apple SG returned HTTP 541")]);
+    const published: { state: string; failures: number }[] = [];
+    c.healthSensor = async (_g, s) => void published.push({ state: s.state, failures: s.failures });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCheck(c);
+    await runCheck(c);
+    err.mockRestore();
+    expect(published).toEqual([
+      { state: "ok", failures: 0 },
+      { state: "ok", failures: 1 },
+    ]);
+  });
+
+  it("alerts once when Apple refuses a large share of checks, and once when it clears", async () => {
+    const results: (Availability[] | Error)[] = [];
+    for (let i = 0; i < 10; i++) results.push(i % 2 === 0 ? none : new Error("Apple SG returned HTTP 541"));
+    for (let i = 0; i < 70; i++) results.push(none);
+    const { c, sent } = ctx(results);
+    let clock = 0;
+    c.now = () => clock;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (let i = 0; i < 80; i++) {
+      await runCheck(c);
+      clock += 60_000;
+    }
+    err.mockRestore();
+    expect(sent.map((m) => m.title)).toEqual(["⚠️ Apple SG is refusing some checks", "✅ Apple SG checks are healthy again"]);
+    expect(sent[0].lines[0]).toMatch(/50% of checks in the last hour failed/);
+  });
+});
+
