@@ -1,5 +1,5 @@
 import { fetchText } from "../http.js";
-import type { Availability, Source, WatchConfig, WatchItem } from "../types.js";
+import type { Availability, DeliveryDate, Source, WatchConfig, WatchItem } from "../types.js";
 import { COLOUR_ALIASES } from "./aliases.js";
 
 const PUBLIC_BASE = "https://www.apple.com/sg";
@@ -134,6 +134,46 @@ export function parsePickup(body: string, items: WatchItem[], storeFilter: strin
   }));
 }
 
+export function deliveryUrl(parts: string[]): string {
+  const q = new URLSearchParams();
+  parts.forEach((p, i) => q.set(`parts.${i}`, p));
+  q.set("mt", "regular");
+  return `${SHOP}/delivery-message?${q}`;
+}
+
+interface DeliveryResponse {
+  body?: {
+    content?: {
+      deliveryMessage?: Record<string, { regular?: { deliveryOptionMessages?: { encodedUpperDateString?: string }[]; deliveryOptions?: { date?: string }[] } }>;
+    };
+  };
+}
+
+/** Read the standard-shipping delivery date per model from a delivery-message response. */
+export function parseDelivery(body: string, items: WatchItem[]): Map<string, DeliveryDate> {
+  let data: DeliveryResponse;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new Error("Apple SG did not return delivery data (got a web page instead)");
+  }
+  const messages = data.body?.content?.deliveryMessage;
+  if (!messages) throw new Error("Apple SG delivery data has no delivery messages");
+
+  const dates = new Map<string, DeliveryDate>();
+  for (const item of items) {
+    const regular = messages[item.partNumber]?.regular;
+    // e.g. "20270125", or a range "20270118-20270125": keep the latest date promised
+    const upper = regular?.deliveryOptionMessages?.[0]?.encodedUpperDateString?.match(/(\d{8})$/)?.[1];
+    if (!upper) continue;
+    dates.set(item.id, {
+      date: `${upper.slice(0, 4)}-${upper.slice(4, 6)}-${upper.slice(6, 8)}`,
+      label: regular?.deliveryOptions?.[0]?.date ?? upper,
+    });
+  }
+  return dates;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -210,6 +250,12 @@ export function createAppleSg(opts: { stores: string[]; retryDelayMs?: number; b
         }
       }
       return result;
+    },
+
+    async deliveryDates(items: WatchItem[]): Promise<Map<string, DeliveryDate>> {
+      const res = await fetchText(deliveryUrl(items.map((i) => i.partNumber)));
+      if (res.status !== 200) throw new Error(`Apple SG returned HTTP ${res.status}`);
+      return parseDelivery(res.body, items);
     },
   };
 }

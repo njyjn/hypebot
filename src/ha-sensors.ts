@@ -1,7 +1,7 @@
 import { HA_API } from "./notifiers/ha.js";
 import { postJson } from "./notifiers/post.js";
 import type { HealthSummary } from "./health.js";
-import type { Availability, WatchItem } from "./types.js";
+import type { Availability, DeliveryDate, WatchItem } from "./types.js";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
@@ -68,6 +68,38 @@ export async function updateHealthSensor(
           last_error: s.lastError ?? "",
           last_success: s.lastSuccess === undefined ? "" : new Date(s.lastSuccess).toISOString(),
           wait_seconds: opts.waitSeconds,
+        },
+      },
+      { Authorization: `Bearer ${opts.token}` },
+    );
+  } catch (error) {
+    console.error(`Updating ${id} failed: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+/** sensor.hypebot_<shop>_delivery: the earliest online delivery date across watched models. */
+export async function updateDeliverySensor(
+  sourceName: string,
+  label: string,
+  items: WatchItem[],
+  dates: Map<string, DeliveryDate>,
+  opts: { token?: string; apiBase?: string },
+): Promise<void> {
+  if (!opts.token || dates.size === 0) return;
+  const known = items.filter((i) => dates.has(i.id));
+  const earliest = known.reduce((a, b) => (dates.get(b.id)!.date < dates.get(a.id)!.date ? b : a));
+  const id = `sensor.hypebot_${slug(sourceName)}_delivery`;
+  try {
+    await postJson(
+      `${opts.apiBase ?? HA_API}/states/${id}`,
+      {
+        state: dates.get(earliest.id)!.date,
+        attributes: {
+          friendly_name: `HypeBot ${label} earliest delivery`,
+          icon: "mdi:truck-delivery",
+          device_class: "date",
+          earliest_model: `${earliest.productName} ${earliest.variantName}`,
+          models: Object.fromEntries(known.map((i) => [`${i.productName} ${i.variantName}`, dates.get(i.id)!.date])),
         },
       },
       { Authorization: `Bearer ${opts.token}` },

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sensorId, updateHealthSensor, updateSensors } from "../src/ha-sensors.js";
+import { sensorId, updateDeliverySensor, updateHealthSensor, updateSensors } from "../src/ha-sensors.js";
 import { duoItem, fakeServer } from "./helpers.js";
 
 const nightSky = duoItem("MK2G4X/A", "Night Sky 512GB");
@@ -99,6 +99,42 @@ describe("updateHealthSensor", () => {
     const s = await fakeServer();
     close = s.close;
     await updateHealthSensor("apple_sg", "Apple SG", { state: "ok", checks: 0, failures: 0, failureRate: 0 }, { apiBase: s.base, waitSeconds: 60 });
+    expect(s.requests).toEqual([]);
+  });
+});
+
+describe("updateDeliverySensor", () => {
+  it("shows the earliest delivery date with each model's date", async () => {
+    const s = await fakeServer();
+    close = s.close;
+    await updateDeliverySensor(
+      "apple_sg",
+      "Apple SG",
+      [nightSky, white],
+      new Map([
+        [nightSky.id, { date: "2027-01-25", label: "Mon 25/01/2027" }],
+        [white.id, { date: "2027-01-18", label: "Mon 18/01/2027" }],
+      ]),
+      { token: "sup", apiBase: s.base },
+    );
+    expect(s.requests[0].url).toBe("/states/sensor.hypebot_apple_sg_delivery");
+    expect(s.requests[0].body).toEqual({
+      state: "2027-01-18",
+      attributes: {
+        friendly_name: "HypeBot Apple SG earliest delivery",
+        icon: "mdi:truck-delivery",
+        device_class: "date",
+        earliest_model: "iPhone Duo Star White 256GB",
+        models: { "iPhone Duo Night Sky 512GB": "2027-01-25", "iPhone Duo Star White 256GB": "2027-01-18" },
+      },
+    });
+  });
+
+  it("does nothing outside Home Assistant or without dates", async () => {
+    const s = await fakeServer();
+    close = s.close;
+    await updateDeliverySensor("apple_sg", "Apple SG", [nightSky], new Map(), { token: "t", apiBase: s.base });
+    await updateDeliverySensor("apple_sg", "Apple SG", [nightSky], new Map([[nightSky.id, { date: "2027-01-25", label: "x" }]]), { apiBase: s.base });
     expect(s.requests).toEqual([]);
   });
 });

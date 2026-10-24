@@ -149,6 +149,17 @@ describe("alert loudness and reminders", () => {
   });
 });
 
+describe("delivery date tracking", () => {
+  it("is on by default and can be turned off", () => {
+    expect(loadConfig({ OPTIONS_PATH: missing }).trackDeliveryDates).toBe(true);
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ track_delivery_dates: false }) }).trackDeliveryDates).toBe(false);
+  });
+
+  it("keeps delivery state next to the stock state", () => {
+    expect(loadConfig({ OPTIONS_PATH: missing, STATE_PATH: "/tmp/x/state.json" }).deliveryStatePath).toBe("/tmp/x/delivery.json");
+  });
+});
+
 describe("model dropdown", () => {
   it("offers exactly the generated models in config.yaml", () => {
     const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");

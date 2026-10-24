@@ -1,5 +1,5 @@
 name: "HypeBot"
-version: "0.4.0"
+version: "0.5.0"
 slug: "hypebot"
 description: "Alerts when hard-to-find products are in stock for store pickup"
 url: "https://github.com/njyjn/hypebot"
@@ -21,6 +21,7 @@ options:
   apple_sg_stores: []
   notify_sold_out: false
   remind_every_minutes: 0
+  track_delivery_dates: true
   send_test_alert: false
   ha_notify_service: ""
   ha_notify_priority: time_sensitive
@@ -42,6 +43,7 @@ schema:
     - "str?"
   notify_sold_out: "bool"
   remind_every_minutes: "int(0,60)"
+  track_delivery_dates: "bool"
   send_test_alert: "bool"
   ha_notify_service: "str?"
   ha_notify_priority: "list(normal|time_sensitive|critical)"

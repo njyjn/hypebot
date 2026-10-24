@@ -1,0 +1,107 @@
+{
+ "head": {
+  "status": "200",
+  "data": {}
+ },
+ "body": {
+  "content": {
+   "deliveryMessage": {
+    "geoLocated": false,
+    "availableOptionsText": "Available Options",
+    "MK2H4X/A": {
+     "regular": {
+      "orderByDeliveryBySuffix": "Delivers:",
+      "deliveryOptionMessages": [
+       {
+        "displayName": "Mon 25/01/2027 \u2014 Free",
+        "inHomeSetup": "false",
+        "encodedUpperDateString": "20270125"
+       }
+      ],
+      "deliveryOptions": [
+       {
+        "displayName": "Standard Shipping",
+        "date": "Mon 25/01/2027",
+        "shippingCost": "Free",
+        "additionalContent": null
+       }
+      ],
+      "messageType": "Delivery",
+      "basePartNumber": "MK2H4",
+      "subHeader": "For iPhone\u00a0Duo 1TB Star\u00a0White",
+      "buyability": {
+       "reason": "OK",
+       "commitCode": "9965",
+       "isBuyable": true
+      },
+      "isBuyable": true
+     }
+    },
+    "dudeCookieSet": false,
+    "MK2G4X/A": {
+     "regular": {
+      "orderByDeliveryBySuffix": "Delivers:",
+      "deliveryOptionMessages": [
+       {
+        "displayName": "Mon 25/01/2027 \u2014 Free",
+        "inHomeSetup": "false",
+        "encodedUpperDateString": "20270125"
+       }
+      ],
+      "deliveryOptions": [
+       {
+        "displayName": "Standard Shipping",
+        "date": "Mon 25/01/2027",
+        "shippingCost": "Free",
+        "additionalContent": null
+       }
+      ],
+      "messageType": "Delivery",
+      "basePartNumber": "MK2G4",
+      "subHeader": "For iPhone\u00a0Duo 512GB Night\u00a0Sky",
+      "buyability": {
+       "reason": "OK",
+       "commitCode": "9965",
+       "isBuyable": true
+      },
+      "isBuyable": true
+     }
+    },
+    "processing": "",
+    "contentloaded": "",
+    "MK2F4X/A": {
+     "regular": {
+      "orderByDeliveryBySuffix": "Delivers:",
+      "deliveryOptionMessages": [
+       {
+        "displayName": "Mon 25/01/2027 \u2014 Free",
+        "inHomeSetup": "false",
+        "encodedUpperDateString": "20270125"
+       }
+      ],
+      "deliveryOptions": [
+       {
+        "displayName": "Standard Shipping",
+        "date": "Mon 25/01/2027",
+        "shippingCost": "Free",
+        "additionalContent": null
+       }
+      ],
+      "messageType": "Delivery",
+      "basePartNumber": "MK2F4",
+      "subHeader": "For iPhone\u00a0Duo 512GB Star\u00a0White",
+      "buyability": {
+       "reason": "OK",
+       "commitCode": "9965",
+       "isBuyable": true
+      },
+      "isBuyable": true
+     }
+    },
+    "dudeLocated": false,
+    "locationCookieValueFoundForThisCountry": false,
+    "accessibilityDeliveryOptions": "delivery options"
+   }
+  }
+ }
+}
