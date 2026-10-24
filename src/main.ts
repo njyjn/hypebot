@@ -1,6 +1,7 @@
 import { loadConfig, type Config } from "./config.js";
 import { formatStatus } from "./format.js";
-import { updateHealthSensor, updateSensors } from "./ha-sensors.js";
+import { runDeliveryCheck } from "./delivery.js";
+import { updateDeliverySensor, updateHealthSensor, updateSensors } from "./ha-sensors.js";
 import { buildNotifiers, sendAll } from "./notifiers/index.js";
 import { createAppleSg } from "./sources/apple-sg.js";
 import { loadState } from "./state.js";
@@ -10,6 +11,7 @@ import { FailureTracker, runCheck, type Ctx, type Group } from "./watcher.js";
 const RESOLVE_EVERY_MS = 6 * 60 * 60 * 1000;
 const RESOLVE_RETRY_MS = 10 * 60 * 1000;
 const JITTER_MS = 10_000;
+const DELIVERY_EVERY_MS = 30 * 60 * 1000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -88,6 +90,10 @@ async function main() {
         const stores = now.find((a) => a.itemId === item.id)?.stores ?? [];
         console.log(`${`${item.productName} ${item.variantName}`.padEnd(32)} ${stores.length ? stores.map((s) => `${s.name} (${s.quote})`).join(", ") : "unavailable"}`);
       }
+      if (cfg.trackDeliveryDates && source.deliveryDates) {
+        const dates = await source.deliveryDates(items);
+        for (const item of items) console.log(`${`${item.productName} ${item.variantName}`.padEnd(32)} delivers ${dates.get(item.id)?.label ?? "no date"}`);
+      }
     }
     return;
   }
@@ -105,7 +111,17 @@ async function main() {
       }),
   };
 
+  let deliveryCheckedAt = 0;
   for (;;) {
+    if (cfg.trackDeliveryDates && Date.now() - deliveryCheckedAt >= DELIVERY_EVERY_MS) {
+      await runDeliveryCheck({
+        groups: ctx.groups,
+        notifiers,
+        statePath: cfg.deliveryStatePath,
+        sensor: (source, items, dates) => updateDeliverySensor(source.name, source.label, items, dates, { token: process.env.SUPERVISOR_TOKEN }),
+      });
+      deliveryCheckedAt = Date.now();
+    }
     if (Date.now() - resolvedAt > RESOLVE_EVERY_MS) {
       for (const group of ctx.groups) {
         try {

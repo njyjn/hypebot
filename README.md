@@ -29,6 +29,7 @@ It only alerts. It never logs in, reserves or checks out.
 | `buy_link_base` | `https://www.apple.com/sg` | Apple store front used for buy links, e.g. your EPP store `https://www.apple.com/sg_epp_…`. Stock is always checked on the public store. |
 | `apple_sg_stores` | `[]` (all) | Limit to some stores, e.g. `["Orchard Road", "Marina Bay Sands"]`. |
 | `notify_sold_out` | `false` | Also send a note when a model sells out again. |
+| `track_delivery_dates` | `true` | Check Apple's online delivery date every 30 minutes and alert when it moves earlier. |
 | `remind_every_minutes` | `0` (off) | Re-alert every N minutes (1–60) while a model stays in stock. |
 | `send_test_alert` | `false` | Send a test alert at startup. |
 | `ha_notify_service` | | e.g. `notify.mobile_app_justins_iphone`. Tapping the alert opens the buy page. |
@@ -123,6 +124,21 @@ One sensor per model, e.g. `sensor.hypebot_iphone_duo_night_sky_512gb`:
 
 Use them in dashboards or your own automations (flash a light, announce on a
 speaker).
+
+## Online delivery dates
+
+Every 30 minutes HypeBot reads Apple SG's standard-shipping date for each
+watched model (the date the buy page shows for delivery).
+
+- `sensor.hypebot_apple_sg_delivery`: the earliest date across your models
+  (a date sensor, so its history graphs nicely), with each model's date in
+  the `models` attribute.
+- "📦 iPhone Duo delivery moved earlier" when a model's date comes forward,
+  e.g. `Night Sky 512GB: Mon 18/01/2027 (was Mon 25/01/2027)`. Dates slipping
+  later are logged but not alerted.
+
+A date moving earlier usually means supply is improving, which is also when
+stores tend to get bigger batches for pickup.
 
 ## Is Apple refusing checks?
 

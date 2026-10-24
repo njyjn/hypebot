@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { APPLE_SG_MODELS } from "./sources/apple-sg-models.js";
 import type { WatchConfig } from "./types.js";
 
@@ -20,6 +21,8 @@ export interface Config {
   telegramBotToken: string;
   telegramChatId: string;
   statePath: string;
+  trackDeliveryDates: boolean;
+  deliveryStatePath: string;
   /** Problems worth logging at startup. Never contains secret values. */
   warnings: string[];
 }
@@ -98,6 +101,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     telegramBotToken: str("telegram_bot_token"),
     telegramChatId: str("telegram_chat_id"),
     statePath: env.STATE_PATH || "/data/state.json",
+    trackDeliveryDates: pick("track_delivery_dates") === undefined ? true : bool("track_delivery_dates"),
+    deliveryStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "delivery.json"),
     warnings,
   };
 

@@ -31,6 +31,12 @@ export interface Availability {
   stores: StoreStock[];
 }
 
+/** A shop's promised delivery date for online orders. */
+export interface DeliveryDate {
+  date: string; // ISO day, latest date promised, e.g. "2027-01-25"
+  label: string; // the shop's wording, e.g. "Mon 25/01/2027"
+}
+
 export interface Source {
   name: string; // matches `source` in the watch settings, e.g. "apple_sg"
   label: string; // shown in alerts, e.g. "Apple SG"
@@ -38,6 +44,8 @@ export interface Source {
   resolve(entries: WatchConfig[]): Promise<WatchItem[]>;
   /** Current availability for every item passed in. Throws on any failure. */
   check(items: WatchItem[]): Promise<Availability[]>;
+  /** Optional: online delivery date per item id. Throws on any failure. */
+  deliveryDates?(items: WatchItem[]): Promise<Map<string, DeliveryDate>>;
 }
 
 export interface AlertMessage {
