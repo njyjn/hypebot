@@ -18,6 +18,7 @@ const item = (partNumber: string, variantName = "Night Sky 512GB"): WatchItem =>
   variantName,
   partNumber,
   buyUrl: "https://www.apple.com/sg/shop/buy-iphone/iphone-duo",
+  productUrl: "https://www.apple.com/sg/shop/buy-iphone/iphone-duo",
 });
 
 const nightSky512 = item("MK2G4X/A");

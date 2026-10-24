@@ -18,11 +18,18 @@ function shopSuffix(items: WatchItem[]): string {
 export function formatStockAlert(news: Changes["newlyInStock"]): AlertMessage {
   const items = news.map((n) => n.item);
   const single = products(items).size === 1;
-  return {
+  const label = (i: WatchItem) => `${single ? "" : `${i.productName} `}${i.variantName}`;
+  const msg: AlertMessage = {
     title: single ? `🟢 ${items[0].productName} in stock${shopSuffix(items)}` : `🟢 Stock alert${shopSuffix(items)}`,
-    lines: news.map(({ item, stores }) => `${single ? "" : `${item.productName} `}${item.variantName}: ${storeList(stores)}`),
-    ...(single ? { url: items[0].buyUrl } : {}),
+    lines: news.map(({ item, stores }) => `${label(item)}: ${storeList(stores)}`),
   };
+  if (items.length === 1) {
+    msg.url = items[0].buyUrl;
+  } else {
+    if (single) msg.url = items[0].productUrl;
+    msg.links = items.map((i) => ({ label: label(i), url: i.buyUrl }));
+  }
+  return msg;
 }
 
 export function formatSoldOut(items: WatchItem[]): AlertMessage {
@@ -39,5 +46,6 @@ export function formatStatus(title: string, detail: string): AlertMessage {
 
 /** Plain text body used by every destination. */
 export function plainText(msg: AlertMessage): string {
-  return [...msg.lines.map((l) => (msg.lines.length > 1 ? `• ${l}` : l)), ...(msg.url ? [`Buy: ${msg.url}`] : [])].join("\n");
+  const buy = msg.links?.length ? msg.links.map((l) => `Buy ${l.label}: ${l.url}`) : msg.url ? [`Buy: ${msg.url}`] : [];
+  return [...msg.lines.map((l) => (msg.lines.length > 1 ? `• ${l}` : l)), ...buy].join("\n");
 }

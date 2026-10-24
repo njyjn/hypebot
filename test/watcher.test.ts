@@ -15,6 +15,7 @@ const item: WatchItem = {
   variantName: "Night Sky 512GB",
   partNumber: "MK2G4X/A",
   buyUrl: "https://www.apple.com/sg/shop/buy-iphone/iphone-duo",
+  productUrl: "https://www.apple.com/sg/shop/buy-iphone/iphone-duo",
 };
 const at = (...names: string[]): Availability[] => [
   { itemId: item.id, stores: names.map((name) => ({ name, quote: "Available Today" })) },

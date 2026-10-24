@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
+import { APPLE_SG_MODELS } from "./sources/apple-sg-models.js";
 import type { WatchConfig } from "./types.js";
 
 export interface Config {
   intervalSeconds: number;
-  watch: WatchConfig[];
+  watch: WatchConfig[]; // typed `watch` entries plus picked `models`
+  buyLinkBase: string; // Apple store front used for links in alerts and sensors
   appleSgStores: string[];
   notifySoldOut: boolean;
   sendTestAlert: boolean;
@@ -19,6 +21,7 @@ export interface Config {
 
 const MIN_INTERVAL = 30;
 const MAX_INTERVAL = 3600;
+const DEFAULT_BUY_LINK_BASE = "https://www.apple.com/sg";
 
 /**
  * Settings come from the add-on options file (Home Assistant writes
@@ -56,9 +59,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   let watch: WatchConfig[] = Array.isArray(raw.watch) ? (raw.watch as WatchConfig[]) : [];
   if (env.WATCH) watch = JSON.parse(env.WATCH);
 
+  // Models picked from the dropdown become watch entries, one per product.
+  const warnings: string[] = [];
+  const picked = new Map<string, string[]>();
+  for (const label of strList("models")) {
+    const model = APPLE_SG_MODELS[label];
+    if (!model) {
+      warnings.push(`Unknown model "${label}" in models; skipping it`);
+      continue;
+    }
+    picked.set(model.product, [...(picked.get(model.product) ?? []), model.variant]);
+  }
+  watch = [...watch, ...[...picked].map(([product, variants]) => ({ source: "apple_sg", product, variants }))];
+
+  let buyLinkBase = str("buy_link_base").replace(/\/+$/, "") || DEFAULT_BUY_LINK_BASE;
+  if (!/^https:\/\/www\.apple\.com\//.test(`${buyLinkBase}/`)) {
+    warnings.push(`buy_link_base must be an https://www.apple.com/... address; using ${DEFAULT_BUY_LINK_BASE}`);
+    buyLinkBase = DEFAULT_BUY_LINK_BASE;
+  }
+
   const cfg: Config = {
     intervalSeconds,
     watch,
+    buyLinkBase,
     appleSgStores: strList("apple_sg_stores"),
     notifySoldOut: bool("notify_sold_out"),
     sendTestAlert: bool("send_test_alert"),
@@ -68,7 +91,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     telegramBotToken: str("telegram_bot_token"),
     telegramChatId: str("telegram_chat_id"),
     statePath: env.STATE_PATH || "/data/state.json",
-    warnings: [],
+    warnings,
   };
 
   const pairs: [string, string, string][] = [

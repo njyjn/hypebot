@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import { formatSoldOut, formatStatus, formatStockAlert } from "../src/format.js";
+import { formatSoldOut, formatStatus, formatStockAlert, plainText } from "../src/format.js";
 import { buildNotifiers, sendAll } from "../src/notifiers/index.js";
 import { createHaNotify } from "../src/notifiers/ha.js";
 import { createSlack } from "../src/notifiers/slack.js";
@@ -60,6 +60,35 @@ describe("format", () => {
     const item = { ...nightSky, shop: "Other Shop" };
     expect(formatStockAlert([{ item, stores: [{ name: "Main St", quote: "In stock" }] }]).title).toBe("🟢 iPhone Duo in stock (Other Shop)");
     expect(formatSoldOut([item]).title).toBe("⚪ iPhone Duo sold out (Other Shop)");
+  });
+
+  it("links straight to the model page when one model restocks", () => {
+    const item = { ...nightSky, buyUrl: "https://x/iphone-duo/512gb-night-sky" };
+    const m = formatStockAlert([{ item, stores: [{ name: "Orchard Road", quote: "Available Today" }] }]);
+    expect(m.url).toBe("https://x/iphone-duo/512gb-night-sky");
+    expect(plainText(m)).toBe("Night Sky 512GB: Orchard Road (Available Today)\nBuy: https://x/iphone-duo/512gb-night-sky");
+  });
+
+  it("gives each model its own buy link when several restock together", () => {
+    const a = { ...nightSky, buyUrl: "https://x/iphone-duo/512gb-night-sky", productUrl: "https://x/iphone-duo" };
+    const b = { ...duoItem("MK2F4X/A", "Star White 512GB"), buyUrl: "https://x/iphone-duo/512gb-star-white", productUrl: "https://x/iphone-duo" };
+    const m = formatStockAlert([
+      { item: a, stores: [{ name: "Orchard Road", quote: "Available Today" }] },
+      { item: b, stores: [{ name: "Jewel Changi Airport", quote: "Available Today" }] },
+    ]);
+    expect(m.url).toBe("https://x/iphone-duo");
+    expect(m.links).toEqual([
+      { label: "Night Sky 512GB", url: "https://x/iphone-duo/512gb-night-sky" },
+      { label: "Star White 512GB", url: "https://x/iphone-duo/512gb-star-white" },
+    ]);
+    expect(plainText(m)).toBe(
+      [
+        "• Night Sky 512GB: Orchard Road (Available Today)",
+        "• Star White 512GB: Jewel Changi Airport (Available Today)",
+        "Buy Night Sky 512GB: https://x/iphone-duo/512gb-night-sky",
+        "Buy Star White 512GB: https://x/iphone-duo/512gb-star-white",
+      ].join("\n"),
+    );
   });
 
   it("formats sold-out and status messages", () => {

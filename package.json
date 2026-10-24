@@ -1,6 +1,6 @@
 {
   "name": "hypebot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Alerts when hard-to-find products are in stock for store pickup",
   "type": "module",
   "private": true,
@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "gen:models": "npm run build && node scripts/gen-models.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
