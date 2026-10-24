@@ -24,7 +24,9 @@ It only alerts. It never logs in, reserves or checks out.
 | Option | Default | Notes |
 |---|---|---|
 | `interval_seconds` | `60` | Seconds between checks, 30–3600. Up to 10 s of random delay is added. After failed checks the wait doubles, up to 10 minutes, and resets after a success. |
-| `watch` | iPhone Duo ×3 | List of `{source, product, variants}`. See below. |
+| `models` | iPhone Duo ×3 | Pick models from the dropdown (add one entry per model). See below. |
+| `watch` | `[]` | Optional: type models that aren't in the dropdown. See below. |
+| `buy_link_base` | `https://www.apple.com/sg` | Apple store front used for buy links, e.g. your EPP store `https://www.apple.com/sg_epp_…`. Stock is always checked on the public store. |
 | `apple_sg_stores` | `[]` (all) | Limit to some stores, e.g. `["Orchard Road", "Marina Bay Sands"]`. |
 | `notify_sold_out` | `false` | Also send a note when a model sells out again. |
 | `send_test_alert` | `false` | Send a test alert at startup. |
@@ -33,6 +35,14 @@ It only alerts. It never logs in, reserves or checks out.
 | `telegram_bot_token` / `telegram_chat_id` | | Both needed. See "Telegram bot". |
 
 ### Choosing models
+
+Add an entry under `models` for each model and pick it from the dropdown,
+e.g. `iPhone Duo / Night Sky / 1TB`.
+
+The dropdown is a fixed list built from Apple's site when HypeBot is
+released (`npm run gen:models`), because Home Assistant can't fill an
+add-on's settings form at runtime. For anything not listed yet, type it
+under `watch`:
 
 ```yaml
 watch:
@@ -44,7 +54,7 @@ watch:
       - "white / 256"            # case-insensitive; "white"/"black" nicknames work
 ```
 
-Each variant is `Colour / Capacity`. HypeBot reads Apple's buy page to find
+Each typed variant is `Colour / Capacity`. HypeBot reads Apple's buy page to find
 the part numbers, so new models work without an update. If a name matches
 nothing, the add-on log lists every valid option and you get one alert.
 
@@ -64,6 +74,26 @@ nothing, the add-on log lists every valid option and you get one alert.
 2. Send your new bot any message, then open
    `https://api.telegram.org/bot<token>/getUpdates` and copy
    `message.chat.id` into `telegram_chat_id`.
+
+### Buy links
+
+It's first come, first served, so every alert links straight to the model's
+own page (colour and capacity already chosen), e.g.
+`…/shop/buy-iphone/iphone-duo/7.6-inch-display-1tb-night-sky`. When several
+models restock at once, Slack and Telegram get one link per model and tapping
+the phone notification opens the product page. Apple has no link that puts a
+phone straight in the bag, so you still answer trade-in and AppleCare, then
+choose store pickup.
+
+Set `buy_link_base` to your EPP store address to land in that store instead
+(open the EPP store once in your browser so its Shopping Agreement is
+accepted).
+
+### Upgrading from 0.1.x
+
+Your old `watch` entries keep working. To switch to the dropdown, pick the
+same models under `models` and empty `watch` (`watch: []`), otherwise both
+are watched (the same model is only watched once).
 
 ## Home Assistant sensors
 
@@ -93,6 +123,7 @@ speaker).
 docker run -d --name hypebot -v "$PWD/data:/data" \
   -e TELEGRAM_BOT_TOKEN=123:abc -e TELEGRAM_CHAT_ID=42 \
   -e WATCH='[{"source":"apple_sg","product":"iphone-duo","variants":["Night Sky / 512GB"]}]' \
+  -e BUY_LINK_BASE=https://www.apple.com/sg \
   ghcr.io/njyjn/hypebot
 ```
 
@@ -109,6 +140,11 @@ npm run build
 WATCH='[...]' OPTIONS_PATH=/nonexistent STATE_PATH=/tmp/hb.json node dist/main.js --once
 node dist/main.js --test-notify   # send a test alert and exit
 ```
+
+Updating the model dropdown: `npm run gen:models` reads Apple SG's buy pages
+for the products in `scripts/gen-models.mjs` and rewrites
+`src/sources/apple-sg-models.ts` and the `models` list in `config.yaml`; then
+bump the version.
 
 Adding a shop: implement `Source` (`src/types.ts`) in `src/sources/` and
 add it to `SOURCES` in `src/main.ts` (and to the `source` list in `config.yaml`). Notifiers and sensors need no changes.

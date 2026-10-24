@@ -16,7 +16,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Every shop HypeBot can watch, keyed by the `source` value in the settings. */
 const SOURCES: Record<string, (cfg: Config) => Source> = {
-  apple_sg: (cfg) => createAppleSg({ stores: cfg.appleSgStores }),
+  apple_sg: (cfg) => createAppleSg({ stores: cfg.appleSgStores, buyLinkBase: cfg.buyLinkBase }),
 };
 
 /** Resolve one shop's entries, retrying until its product pages can be read. */
@@ -51,7 +51,7 @@ async function main() {
   }
 
   if (cfg.watch.length === 0) {
-    console.error("Nothing to watch: add at least one entry under `watch` in the settings.");
+    console.error("Nothing to watch: pick at least one model under `models` (or add a `watch` entry) in the settings.");
     process.exitCode = 1;
     return;
   }

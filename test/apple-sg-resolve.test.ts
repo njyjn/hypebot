@@ -18,7 +18,12 @@ describe("parseCatalogue", () => {
       colourCode: "nightsky",
       colourName: "Night Sky",
       capacity: "512gb",
+      slug: "7.6-inch-display-512gb-night-sky",
     });
+  });
+
+  it("normalises the non-breaking space Apple puts in product names", () => {
+    expect(parseCatalogue(html.replace("<title>Buy iPhone Duo", "<title>Buy iPhone\u00a0Duo")).productName).toBe("iPhone Duo");
   });
 
   it("formats a readable variant label", () => {
@@ -67,7 +72,8 @@ describe("appleSg.resolve", () => {
         productName: "iPhone Duo",
         variantName: "Night Sky 512GB",
         partNumber: "MK2G4X/A",
-        buyUrl: "https://www.apple.com/sg/shop/buy-iphone/iphone-duo",
+        buyUrl: "https://www.apple.com/sg/shop/buy-iphone/iphone-duo/7.6-inch-display-512gb-night-sky",
+        productUrl: "https://www.apple.com/sg/shop/buy-iphone/iphone-duo",
       },
     ]);
   });
@@ -115,5 +121,34 @@ describe("appleSg.resolve retries", () => {
       createAppleSg({ stores: [], retryDelayMs: 0 }).resolve([{ source: "apple_sg", product: "iphone-duo", variants: ["Gold / 512GB"] }]),
     ).rejects.toThrow(/Gold/);
     expect(fetchText).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("model page links", () => {
+  it("finds each model's own page slug", () => {
+    expect(cat.entries.find((e) => e.partNumber === "MK2G4X/A")?.slug).toBe("7.6-inch-display-512gb-night-sky");
+    expect(cat.entries.find((e) => e.partNumber === "MK2H4X/A")?.slug).toBe("7.6-inch-display-1tb-star-white");
+  });
+
+  it("links each item to its model page under the configured base", async () => {
+    vi.mocked(fetchText).mockReset();
+    vi.mocked(fetchText).mockResolvedValue({ status: 200, body: html });
+    const base = "https://www.apple.com/sg_epp_abc";
+    const [item] = await createAppleSg({ stores: [], buyLinkBase: base }).resolve([
+      { source: "apple_sg", product: "iphone-duo", variants: ["Night Sky / 1TB"] },
+    ]);
+    expect(item.buyUrl).toBe(`${base}/shop/buy-iphone/iphone-duo/7.6-inch-display-1tb-night-sky`);
+    expect(item.productUrl).toBe(`${base}/shop/buy-iphone/iphone-duo`);
+    // Stock and model data still come from the public store.
+    expect(fetchText).toHaveBeenCalledWith("https://www.apple.com/sg/shop/buy-iphone/iphone-duo");
+  });
+
+  it("falls back to the product page when a model has no page of its own", async () => {
+    vi.mocked(fetchText).mockReset();
+    vi.mocked(fetchText).mockResolvedValue({ status: 200, body: html.replace(/<a href="[^"]*7\.6-inch-display-256gb-star-white"><\/a>/, "") });
+    const [item] = await createAppleSg({ stores: [] }).resolve([
+      { source: "apple_sg", product: "iphone-duo", variants: ["Star White / 256GB"] },
+    ]);
+    expect(item.buyUrl).toBe("https://www.apple.com/sg/shop/buy-iphone/iphone-duo");
   });
 });

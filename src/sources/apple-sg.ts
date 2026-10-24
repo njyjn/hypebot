@@ -2,13 +2,15 @@ import { fetchText } from "../http.js";
 import type { Availability, Source, WatchConfig, WatchItem } from "../types.js";
 import { COLOUR_ALIASES } from "./aliases.js";
 
-const SHOP = "https://www.apple.com/sg/shop";
+const PUBLIC_BASE = "https://www.apple.com/sg";
+const SHOP = `${PUBLIC_BASE}/shop`;
 
 export interface CatalogueEntry {
   partNumber: string;
   colourCode: string; // "nightsky"
   colourName: string; // "Night Sky"
   capacity: string; // "512gb"
+  slug?: string; // the model's own page, e.g. "7.6-inch-display-512gb-night-sky"
 }
 
 export interface Catalogue {
@@ -20,7 +22,7 @@ export const buyUrl = (product: string) => `${SHOP}/buy-iphone/${product}`;
 
 /** Read the model list embedded in an Apple buy page. */
 export function parseCatalogue(html: string): Catalogue {
-  const title = /<title>\s*Buy (.+?) - Apple/i.exec(html)?.[1]?.trim() ?? "";
+  const title = (/<title>\s*Buy (.+?) - Apple/i.exec(html)?.[1] ?? "").replace(/\s+/g, " ").trim();
 
   const colourNames = new Map<string, string>();
   for (const m of html.matchAll(/"([a-z0-9]+)":\{"value":"([^"]+)"/g)) colourNames.set(m[1], m[2]);
@@ -41,6 +43,14 @@ export function parseCatalogue(html: string): Catalogue {
       capacity: capacity.toLowerCase(),
     });
   });
+
+  // Each model has its own page, e.g. .../iphone-duo/7.6-inch-display-512gb-night-sky.
+  // Match it by the capacity and colour at the end of the slug.
+  const slugs = [...new Set([...html.matchAll(/\/buy-iphone\/[a-z0-9-]+\/([a-z0-9.-]+)"/g)].map((m) => m[1]))];
+  const kebab = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  for (const e of entries.values()) {
+    e.slug = slugs.find((s) => s.endsWith(`-${e.capacity}-${kebab(e.colourName)}`));
+  }
 
   return { productName: title, entries: [...entries.values()] };
 }
@@ -149,8 +159,11 @@ function storeNames(body: string): string[] {
   return (data.body?.stores ?? []).map((s) => s.storeName);
 }
 
-export function createAppleSg(opts: { stores: string[]; retryDelayMs?: number }): Source {
+export function createAppleSg(opts: { stores: string[]; retryDelayMs?: number; buyLinkBase?: string }): Source {
   const retryDelayMs = opts.retryDelayMs ?? 5_000;
+  // Links in alerts can point at another Apple store front (e.g. an EPP store);
+  // stock and model data always come from the public store.
+  const linkBase = (opts.buyLinkBase || PUBLIC_BASE).replace(/\/+$/, "");
   let filterChecked = opts.stores.length === 0;
 
   return {
@@ -173,7 +186,8 @@ export function createAppleSg(opts: { stores: string[]; retryDelayMs?: number })
             productName: cat.productName,
             variantName: variantLabel(e),
             partNumber: e.partNumber,
-            buyUrl: buyUrl(entry.product),
+            buyUrl: `${linkBase}/shop/buy-iphone/${entry.product}${e.slug ? `/${e.slug}` : ""}`,
+            productUrl: `${linkBase}/shop/buy-iphone/${entry.product}`,
           });
         }
       }

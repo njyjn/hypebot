@@ -2,7 +2,9 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readFileSync as readText } from "node:fs";
 import { loadConfig } from "../src/config.js";
+import { APPLE_SG_MODELS } from "../src/sources/apple-sg-models.js";
 
 function optionsFile(options: Record<string, unknown>): string {
   const path = join(mkdtempSync(join(tmpdir(), "hb-")), "options.json");
@@ -87,5 +89,54 @@ describe("loadConfig", () => {
   it("does not warn about destinations when one is fully set", () => {
     const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ telegram_bot_token: "t", telegram_chat_id: "1" }) });
     expect(cfg.warnings).toEqual([]);
+  });
+
+  it("turns picked models into watch entries alongside typed ones", () => {
+    const cfg = loadConfig({
+      OPTIONS_PATH: optionsFile({
+        models: ["iPhone Duo / Night Sky / 1TB", "iPhone Duo / Star White / 256GB"],
+        watch: [{ source: "apple_sg", product: "iphone-duo", variants: ["white / 512"] }],
+      }),
+    });
+    expect(cfg.watch).toEqual([
+      { source: "apple_sg", product: "iphone-duo", variants: ["white / 512"] },
+      { source: "apple_sg", product: "iphone-duo", variants: ["Night Sky / 1TB", "Star White / 256GB"] },
+    ]);
+  });
+
+  it("warns about and skips a picked model it does not know", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ models: ["iPhone Duo / Gold / 1TB"] }) });
+    expect(cfg.watch).toEqual([]);
+    expect(cfg.warnings.some((w) => w.includes("iPhone Duo / Gold / 1TB"))).toBe(true);
+  });
+
+  it("defaults the buy link base to the public SG store", () => {
+    expect(loadConfig({ OPTIONS_PATH: missing }).buyLinkBase).toBe("https://www.apple.com/sg");
+  });
+
+  it("accepts an Apple store front such as an EPP store as the buy link base", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ buy_link_base: "https://www.apple.com/sg_epp_abc/" }) });
+    expect(cfg.buyLinkBase).toBe("https://www.apple.com/sg_epp_abc");
+  });
+
+  it("rejects a buy link base that is not on apple.com", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ buy_link_base: "https://evil.example/sg" }) });
+    expect(cfg.buyLinkBase).toBe("https://www.apple.com/sg");
+    expect(cfg.warnings.some((w) => /buy_link_base/.test(w))).toBe(true);
+  });
+});
+
+describe("model dropdown", () => {
+  it("offers exactly the generated models in config.yaml", () => {
+    const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
+    const choices = /\n  models:\n    - "list\(([^\n]*)\)\?"/.exec(yaml)?.[1].split("|");
+    expect(choices).toEqual(Object.keys(APPLE_SG_MODELS));
+  });
+
+  it("has every default model in the dropdown", () => {
+    const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
+    const defaults = [...yaml.split("\nschema:")[0].split("\n  models:\n")[1].matchAll(/^    - "([^"]+)"$/gm)].map((m) => m[1]);
+    expect(defaults.length).toBeGreaterThan(0);
+    for (const d of defaults) expect(Object.keys(APPLE_SG_MODELS)).toContain(d);
   });
 });

@@ -16,7 +16,8 @@ export interface WatchItem {
   productName: string; // "iPhone Duo"
   variantName: string; // "Night Sky 512GB"
   partNumber: string;
-  buyUrl: string;
+  buyUrl: string; // this model's own page when the shop has one
+  productUrl: string; // the product's page, for alerts covering several models
 }
 
 export interface StoreStock {
@@ -42,7 +43,8 @@ export interface Source {
 export interface AlertMessage {
   title: string;
   lines: string[];
-  url?: string;
+  url?: string; // where tapping the alert goes
+  links?: { label: string; url: string }[]; // one buy link per model when several restock at once
 }
 
 export interface Notifier {

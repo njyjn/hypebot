@@ -46,4 +46,5 @@ export const duoItem = (partNumber: string, variantName: string, product = "ipho
   variantName,
   partNumber,
   buyUrl: `https://www.apple.com/sg/shop/buy-iphone/${product}`,
+  productUrl: `https://www.apple.com/sg/shop/buy-iphone/${product}`,
 });
