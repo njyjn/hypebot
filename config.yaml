@@ -1,5 +1,5 @@
 name: "HypeBot"
-version: "0.3.0"
+version: "0.4.0"
 slug: "hypebot"
 description: "Alerts when hard-to-find products are in stock for store pickup"
 url: "https://github.com/njyjn/hypebot"

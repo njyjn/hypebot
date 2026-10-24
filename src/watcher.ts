@@ -1,5 +1,6 @@
 import type { Config } from "./config.js";
 import { formatReminder, formatSoldOut, formatStatus, formatStockAlert } from "./format.js";
+import { HealthTracker, type HealthSummary } from "./health.js";
 import { sendAll } from "./notifiers/index.js";
 import { saveState, type StockState } from "./state.js";
 import type { Availability, Notifier, Source, StoreStock, WatchItem } from "./types.js";
@@ -9,6 +10,7 @@ export interface Group {
   source: Source;
   items: WatchItem[];
   failures: FailureTracker;
+  health?: HealthTracker;
 }
 
 export interface Ctx {
@@ -19,6 +21,7 @@ export interface Ctx {
   sensors: (items: WatchItem[], now: Availability[]) => Promise<void>;
   now?: () => number; // clock, swappable in tests
   lastAlerted?: Map<string, number>; // item id -> when we last alerted about it (for reminders)
+  healthSensor?: (group: Group, summary: HealthSummary) => Promise<void>;
 }
 
 /** One pass over every shop: check, alert on changes, update sensors, remember the result. */
@@ -29,21 +32,27 @@ export async function runCheck(ctx: Ctx): Promise<void> {
 
   for (const group of ctx.groups) {
     const label = group.source.label;
+    const health = (group.health ??= new HealthTracker());
+    const clock = (ctx.now ?? Date.now)();
     try {
       now.push(...(await group.source.check(group.items)));
       checkedItems.push(...group.items);
+      health.record(true, clock);
     } catch (error) {
       failed.add(group);
       const reason = error instanceof Error ? error.message : String(error);
       console.error(`${label} check failed: ${reason}`);
+      health.record(false, clock, reason);
       if (group.failures.fail() === "alert") {
         await sendAll(ctx.notifiers, formatStatus(`⚠️ HypeBot can't reach ${label}`, `Last ${group.failures.threshold} checks failed. Latest error: ${reason}`));
       }
+      await reportHealth(ctx, group, clock);
       continue;
     }
     if (group.failures.succeed() === "recovered") {
       await sendAll(ctx.notifiers, formatStatus("✅ HypeBot is back to normal", `Checking ${label} stock again.`));
     }
+    await reportHealth(ctx, group, clock);
   }
   if (checkedItems.length === 0) return;
 
@@ -104,6 +113,11 @@ const MAX_BACKOFF_MS = 600_000;
  */
 export class FailureTracker {
   private count = 0;
+
+  /** Failed checks in a row right now. */
+  get inARow(): number {
+    return this.count;
+  }
   private alerted = false;
 
   constructor(readonly threshold = 10) {}
@@ -157,4 +171,25 @@ async function sendReminders(ctx: Ctx, items: WatchItem[], now: Availability[], 
   if (due.length === 0) return;
   for (const { item } of due) last.set(item.id, clock);
   await sendAll(ctx.notifiers, formatReminder(due));
+}
+
+/** Publish a shop's health and alert when it starts or stops refusing a large share of checks. */
+async function reportHealth(ctx: Ctx, group: Group, clock: number): Promise<void> {
+  const health = group.health!;
+  const summary = health.summary(clock, group.failures.inARow);
+  await ctx.healthSensor?.(group, summary);
+  const label = group.source.label;
+  const change = health.transition(summary);
+  if (change === "degraded") {
+    const pct = Math.round(summary.failureRate * 100);
+    await sendAll(
+      ctx.notifiers,
+      formatStatus(
+        `⚠️ ${label} is refusing some checks`,
+        `${pct}% of checks in the last hour failed (${summary.failures} of ${summary.checks}). Latest error: ${summary.lastError ?? "unknown"}. HypeBot is backing off; consider a longer interval_seconds.`,
+      ),
+    );
+  } else if (change === "cleared") {
+    await sendAll(ctx.notifiers, formatStatus(`✅ ${label} checks are healthy again`, `Fewer than 30% of checks in the last hour failed.`));
+  }
 }

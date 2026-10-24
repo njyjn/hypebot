@@ -124,6 +124,21 @@ One sensor per model, e.g. `sensor.hypebot_iphone_duo_night_sky_512gb`:
 Use them in dashboards or your own automations (flash a light, announce on a
 speaker).
 
+## Is Apple refusing checks?
+
+`sensor.hypebot_apple_sg_health` shows how HypeBot is getting on with Apple:
+
+- state: `ok`, `degraded` (more than 30% of the last hour's checks failed,
+  and at least 5) or `blocked` (10 failures in a row)
+- attributes: `failure_rate_percent`, `failures_last_hour`,
+  `checks_last_hour`, `last_error` (e.g. `Apple SG returned HTTP 541`, Apple's
+  "too many requests" answer), `last_success`, `wait_seconds` (current gap
+  between checks, longer while backing off)
+
+When it leaves `ok` you get one "⚠️ Apple SG is refusing some checks" alert,
+and one "✅ healthy again" when it recovers. If it happens, raise
+`interval_seconds` (e.g. 90) for a while.
+
 ## When things go wrong
 
 - **Apple refuses or fails a check:** HypeBot logs it, backs off, and keeps

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sensorId, updateSensors } from "../src/ha-sensors.js";
+import { sensorId, updateHealthSensor, updateSensors } from "../src/ha-sensors.js";
 import { duoItem, fakeServer } from "./helpers.js";
 
 const nightSky = duoItem("MK2G4X/A", "Night Sky 512GB");
@@ -68,3 +68,38 @@ describe("updateSensors", () => {
     err.mockRestore();
   });
 });
+
+describe("updateHealthSensor", () => {
+  it("writes the shop's health sensor", async () => {
+    const s = await fakeServer();
+    close = s.close;
+    await updateHealthSensor(
+      "apple_sg",
+      "Apple SG",
+      { state: "degraded", checks: 10, failures: 5, failureRate: 0.5, lastError: "Apple SG returned HTTP 541", lastSuccess: Date.parse("2026-10-24T05:00:00Z") },
+      { token: "sup", apiBase: s.base, waitSeconds: 120 },
+    );
+    expect(s.requests[0].url).toBe("/states/sensor.hypebot_apple_sg_health");
+    expect(s.requests[0].body).toEqual({
+      state: "degraded",
+      attributes: {
+        friendly_name: "HypeBot Apple SG health",
+        icon: "mdi:heart-pulse",
+        failure_rate_percent: 50,
+        failures_last_hour: 5,
+        checks_last_hour: 10,
+        last_error: "Apple SG returned HTTP 541",
+        last_success: "2026-10-24T05:00:00.000Z",
+        wait_seconds: 120,
+      },
+    });
+  });
+
+  it("does nothing outside Home Assistant", async () => {
+    const s = await fakeServer();
+    close = s.close;
+    await updateHealthSensor("apple_sg", "Apple SG", { state: "ok", checks: 0, failures: 0, failureRate: 0 }, { apiBase: s.base, waitSeconds: 60 });
+    expect(s.requests).toEqual([]);
+  });
+});
+
