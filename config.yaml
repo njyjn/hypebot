@@ -1,0 +1,45 @@
+name: "HypeBot"
+version: "0.1.0"
+slug: "hypebot"
+description: "Alerts when hard-to-find products are in stock for store pickup"
+url: "https://github.com/njyjn/hypebot"
+image: ghcr.io/njyjn/hypebot
+startup: application
+boot: auto
+init: false
+homeassistant_api: true
+arch:
+  - aarch64
+options:
+  interval_seconds: 60
+  watch:
+    - source: apple_sg
+      product: iphone-duo
+      variants:
+        - "Star White / 512GB"
+        - "Night Sky / 512GB"
+        - "Star White / 256GB"
+  apple_sg_stores: []
+  notify_sold_out: false
+  send_test_alert: false
+  ha_notify_service: ""
+  slack_bot_token: ""
+  slack_channel: ""
+  telegram_bot_token: ""
+  telegram_chat_id: ""
+schema:
+  interval_seconds: "int(30,3600)"
+  watch:
+    - source: "list(apple_sg)"
+      product: "str"
+      variants:
+        - "str"
+  apple_sg_stores:
+    - "str?"
+  notify_sold_out: "bool"
+  send_test_alert: "bool"
+  ha_notify_service: "str?"
+  slack_bot_token: "password?"
+  slack_channel: "str?"
+  telegram_bot_token: "password?"
+  telegram_chat_id: "str?"
