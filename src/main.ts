@@ -45,7 +45,8 @@ async function main() {
   console.log(`HypeBot starting. Alerts: ${notifiers.map((n) => n.name).join(", ") || "none"}. Interval: ${cfg.intervalSeconds}s.`);
 
   if (args.has("--test-notify") || cfg.sendTestAlert) {
-    await sendAll(notifiers, formatStatus("HypeBot test alert", "Alerts are working."));
+    // Urgent like a stock alert, so it shows how loud a real one will be.
+    await sendAll(notifiers, { ...formatStatus("HypeBot test alert", "Alerts are working."), urgent: true });
     console.log(`Test alert sent to: ${notifiers.map((n) => n.name).join(", ") || "nobody (no destinations configured)"}`);
     if (args.has("--test-notify")) return;
   }

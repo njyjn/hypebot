@@ -126,6 +126,29 @@ describe("loadConfig", () => {
   });
 });
 
+describe("alert loudness and reminders", () => {
+  it("defaults to time-sensitive phone alerts and no reminders", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: missing });
+    expect(cfg.haNotifyPriority).toBe("time_sensitive");
+    expect(cfg.remindEveryMinutes).toBe(0);
+  });
+
+  it("reads the priority and reminder interval", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ ha_notify_priority: "critical", remind_every_minutes: 5 }) });
+    expect(cfg.haNotifyPriority).toBe("critical");
+    expect(cfg.remindEveryMinutes).toBe(5);
+  });
+
+  it("falls back to time-sensitive for an unknown priority", () => {
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ ha_notify_priority: "loud" }) }).haNotifyPriority).toBe("time_sensitive");
+  });
+
+  it("keeps the reminder interval within 0..60 minutes", () => {
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ remind_every_minutes: -3 }) }).remindEveryMinutes).toBe(0);
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ remind_every_minutes: 500 }) }).remindEveryMinutes).toBe(60);
+  });
+});
+
 describe("model dropdown", () => {
   it("offers exactly the generated models in config.yaml", () => {
     const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
