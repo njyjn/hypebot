@@ -204,7 +204,7 @@ notification opens the buy page in the HA companion app.
 
 Only when `SUPERVISOR_TOKEN` is set. Entity
 `sensor.hypebot_<product>_<colour>_<capacity>` (slugified), state
-`in_stock` / `unavailable`, attributes: `friendly_name`, `icon`
+`in_stock` / `out_of_stock` (not `unavailable`, which HA reserves for broken entities), attributes: `friendly_name`, `icon`
 (`mdi:cellphone`), `stores` (list), `quote`, `part_number`, `buy_url`,
 `last_checked`. Written every check, so they reappear after an HA restart.
 

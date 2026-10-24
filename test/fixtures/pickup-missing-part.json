@@ -1,0 +1,50 @@
+{
+ "head": {
+  "status": "200",
+  "data": {}
+ },
+ "body": {
+  "stores": [
+   {
+    "storeEmail": "orchardroad@apple.com",
+    "storeName": "Orchard Road",
+    "storeNumber": "R669",
+    "country": "SG",
+    "city": "Singapore",
+    "partsAvailability": {
+     "MK2G4X/A": {
+      "storePickEligible": true,
+      "pickupSearchQuote": "Available Today",
+      "partNumber": "MK2G4X/A",
+      "pickupDisplay": "available",
+      "pickupType": "In-Store Pickup"
+     }
+    }
+   },
+   {
+    "storeEmail": "marinabaysands@apple.com",
+    "storeName": "Marina Bay Sands",
+    "storeNumber": "R633",
+    "country": "SG",
+    "city": "Singapore",
+    "partsAvailability": {}
+   },
+   {
+    "storeEmail": "jewelchangiairport@apple.com",
+    "storeName": "Jewel Changi Airport",
+    "storeNumber": "R736",
+    "country": "SG",
+    "city": "Singapore",
+    "partsAvailability": {
+     "MK2G4X/A": {
+      "storePickEligible": true,
+      "pickupSearchQuote": "Available Today",
+      "partNumber": "MK2G4X/A",
+      "pickupDisplay": "available",
+      "pickupType": "In-Store Pickup"
+     }
+    }
+   }
+  ]
+ }
+}
