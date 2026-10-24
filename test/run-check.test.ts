@@ -112,3 +112,43 @@ describe("runCheck with several shops", () => {
     expect(loadState(statePath)).toEqual({ [item.id]: ["Orchard Road"], [other.id]: ["Somewhere"] });
   });
 });
+
+describe("reminders while still in stock", () => {
+  function remindCtx(remindEveryMinutes: number, results: Availability[][]) {
+    const base = ctx(results as (Availability[] | Error)[]);
+    base.c.cfg = { ...base.c.cfg, remindEveryMinutes };
+    let clock = 0;
+    base.c.now = () => clock;
+    return { ...base, advance: (minutes: number) => (clock += minutes * 60_000) };
+  }
+
+  it("re-alerts once the reminder interval has passed and the model is still in stock", async () => {
+    const r = remindCtx(5, [inStock, inStock, inStock]);
+    await runCheck(r.c);
+    r.advance(3);
+    await runCheck(r.c);
+    r.advance(2);
+    await runCheck(r.c);
+    expect(r.sent.map((m) => m.title)).toEqual(["🟢 iPhone Duo in stock (Apple SG)", "🔁 Still in stock: iPhone Duo (Apple SG)"]);
+    expect(r.sent[1].urgent).toBe(true);
+    expect(r.sent[1].url).toBe(item.buyUrl);
+  });
+
+  it("stops reminding once it sells out", async () => {
+    const r = remindCtx(1, [inStock, none, none]);
+    await runCheck(r.c);
+    r.advance(1);
+    await runCheck(r.c);
+    r.advance(1);
+    await runCheck(r.c);
+    expect(r.sent).toHaveLength(1);
+  });
+
+  it("never reminds when reminders are off", async () => {
+    const r = remindCtx(0, [inStock, inStock]);
+    await runCheck(r.c);
+    r.advance(30);
+    await runCheck(r.c);
+    expect(r.sent).toHaveLength(1);
+  });
+});

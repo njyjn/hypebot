@@ -22,6 +22,7 @@ export function formatStockAlert(news: Changes["newlyInStock"]): AlertMessage {
   const msg: AlertMessage = {
     title: single ? `🟢 ${items[0].productName} in stock${shopSuffix(items)}` : `🟢 Stock alert${shopSuffix(items)}`,
     lines: news.map(({ item, stores }) => `${label(item)}: ${storeList(stores)}`),
+    urgent: true,
   };
   if (items.length === 1) {
     msg.url = items[0].buyUrl;
@@ -30,6 +31,14 @@ export function formatStockAlert(news: Changes["newlyInStock"]): AlertMessage {
     msg.links = items.map((i) => ({ label: label(i), url: i.buyUrl }));
   }
   return msg;
+}
+
+/** Same content as a stock alert, titled as a reminder. */
+export function formatReminder(still: Changes["newlyInStock"]): AlertMessage {
+  const msg = formatStockAlert(still);
+  const items = still.map((n) => n.item);
+  const what = products(items).size === 1 ? items[0].productName : "your models";
+  return { ...msg, title: `🔁 Still in stock: ${what}${shopSuffix(items)}` };
 }
 
 export function formatSoldOut(items: WatchItem[]): AlertMessage {

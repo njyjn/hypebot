@@ -29,8 +29,10 @@ It only alerts. It never logs in, reserves or checks out.
 | `buy_link_base` | `https://www.apple.com/sg` | Apple store front used for buy links, e.g. your EPP store `https://www.apple.com/sg_epp_…`. Stock is always checked on the public store. |
 | `apple_sg_stores` | `[]` (all) | Limit to some stores, e.g. `["Orchard Road", "Marina Bay Sands"]`. |
 | `notify_sold_out` | `false` | Also send a note when a model sells out again. |
+| `remind_every_minutes` | `0` (off) | Re-alert every N minutes (1–60) while a model stays in stock. |
 | `send_test_alert` | `false` | Send a test alert at startup. |
 | `ha_notify_service` | | e.g. `notify.mobile_app_justins_iphone`. Tapping the alert opens the buy page. |
+| `ha_notify_priority` | `time_sensitive` | How loudly stock alerts arrive via the HA companion app: `normal`, `time_sensitive` (breaks through Focus modes) or `critical` (rings even on silent). Status messages always arrive normally. |
 | `slack_bot_token` / `slack_channel` | | Both needed. See "Slack bot". |
 | `telegram_bot_token` / `telegram_chat_id` | | Both needed. See "Telegram bot". |
 
@@ -88,6 +90,22 @@ choose store pickup.
 Set `buy_link_base` to your EPP store address to land in that store instead
 (open the EPP store once in your browser so its Shopping Agreement is
 accepted).
+
+### Loud phone alerts
+
+Restocks can be gone within a minute, so stock alerts sent through
+`ha_notify_service` are marked urgent:
+
+- `time_sensitive` (default): shown immediately, even in a Focus mode. On
+  iPhone, check Settings → Notifications → Home Assistant → Time Sensitive
+  Notifications is on.
+- `critical`: plays a sound even when the phone is on silent or in Do Not
+  Disturb. iOS asks once for permission to allow Critical Alerts for the Home
+  Assistant app; allow it (Settings → Notifications → Home Assistant →
+  Critical Alerts). On Android it uses the alarm channel.
+
+With `remind_every_minutes` set, you get a "🔁 Still in stock" alert every N
+minutes until the model sells out.
 
 ### Upgrading from 0.1.x
 

@@ -6,7 +6,7 @@ import { createTelegram } from "./telegram.js";
 
 export function buildNotifiers(cfg: Config, env: NodeJS.ProcessEnv = process.env): Notifier[] {
   const list: Notifier[] = [];
-  if (cfg.haNotifyService && env.SUPERVISOR_TOKEN) list.push(createHaNotify(cfg.haNotifyService, env.SUPERVISOR_TOKEN));
+  if (cfg.haNotifyService && env.SUPERVISOR_TOKEN) list.push(createHaNotify(cfg.haNotifyService, env.SUPERVISOR_TOKEN, undefined, cfg.haNotifyPriority));
   if (cfg.slackBotToken && cfg.slackChannel) list.push(createSlack(cfg.slackBotToken, cfg.slackChannel));
   if (cfg.telegramBotToken && cfg.telegramChatId) list.push(createTelegram(cfg.telegramBotToken, cfg.telegramChatId));
   return list;

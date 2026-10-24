@@ -1,5 +1,5 @@
 name: "HypeBot"
-version: "0.2.0"
+version: "0.3.0"
 slug: "hypebot"
 description: "Alerts when hard-to-find products are in stock for store pickup"
 url: "https://github.com/njyjn/hypebot"
@@ -20,8 +20,10 @@ options:
   buy_link_base: "https://www.apple.com/sg"
   apple_sg_stores: []
   notify_sold_out: false
+  remind_every_minutes: 0
   send_test_alert: false
   ha_notify_service: ""
+  ha_notify_priority: time_sensitive
   slack_bot_token: ""
   slack_channel: ""
   telegram_bot_token: ""
@@ -39,8 +41,10 @@ schema:
   apple_sg_stores:
     - "str?"
   notify_sold_out: "bool"
+  remind_every_minutes: "int(0,60)"
   send_test_alert: "bool"
   ha_notify_service: "str?"
+  ha_notify_priority: "list(normal|time_sensitive|critical)"
   slack_bot_token: "password?"
   slack_channel: "str?"
   telegram_bot_token: "password?"

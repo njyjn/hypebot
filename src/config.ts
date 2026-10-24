@@ -2,12 +2,17 @@ import { readFileSync } from "node:fs";
 import { APPLE_SG_MODELS } from "./sources/apple-sg-models.js";
 import type { WatchConfig } from "./types.js";
 
+export type HaNotifyPriority = "normal" | "time_sensitive" | "critical";
+const PRIORITIES: HaNotifyPriority[] = ["normal", "time_sensitive", "critical"];
+
 export interface Config {
   intervalSeconds: number;
   watch: WatchConfig[]; // typed `watch` entries plus picked `models`
   buyLinkBase: string; // Apple store front used for links in alerts and sensors
   appleSgStores: string[];
   notifySoldOut: boolean;
+  haNotifyPriority: HaNotifyPriority; // how loudly stock alerts arrive on phones
+  remindEveryMinutes: number; // 0 = off; otherwise re-alert while still in stock
   sendTestAlert: boolean;
   haNotifyService: string;
   slackBotToken: string;
@@ -84,6 +89,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     buyLinkBase,
     appleSgStores: strList("apple_sg_stores"),
     notifySoldOut: bool("notify_sold_out"),
+    haNotifyPriority: (PRIORITIES as string[]).includes(str("ha_notify_priority")) ? (str("ha_notify_priority") as HaNotifyPriority) : "time_sensitive",
+    remindEveryMinutes: Math.min(60, Math.max(0, Math.round(Number(pick("remind_every_minutes")) || 0))),
     sendTestAlert: bool("send_test_alert"),
     haNotifyService: str("ha_notify_service"),
     slackBotToken: str("slack_bot_token"),

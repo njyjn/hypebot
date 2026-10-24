@@ -36,6 +36,7 @@ describe("format", () => {
     expect(m.title).toBe("🟢 iPhone Duo in stock (Apple SG)");
     expect(m.lines[0]).toBe("Night Sky 512GB: Orchard Road, Jewel Changi Airport (Available Today)");
     expect(m.url).toBe("https://www.apple.com/sg/shop/buy-iphone/iphone-duo");
+    expect(m.urgent).toBe(true);
   });
 
   it("shows each store's own wording when they differ", () => {
@@ -151,6 +152,41 @@ describe("ha notify", () => {
   it("rejects on an HTTP error", async () => {
     const s = await server(() => ({ status: 400 }));
     await expect(createHaNotify("nope", "t", s.base).send(msg)).rejects.toThrow(/400/);
+  });
+});
+
+describe("ha notify loudness", () => {
+  const urgent: AlertMessage = { ...msg, urgent: true };
+
+  it("marks urgent alerts time-sensitive so they break through Focus", async () => {
+    const s = await server();
+    await createHaNotify("mobile_app_x", "t", s.base, "time_sensitive").send(urgent);
+    expect(s.requests[0].body.data.push).toEqual({ "interruption-level": "time-sensitive" });
+    expect(s.requests[0].body.data.priority).toBe("high");
+    expect(s.requests[0].body.data.ttl).toBe(0);
+  });
+
+  it("makes urgent alerts critical, ringing even on silent, when asked", async () => {
+    const s = await server();
+    await createHaNotify("mobile_app_x", "t", s.base, "critical").send(urgent);
+    expect(s.requests[0].body.data.push).toEqual({
+      "interruption-level": "critical",
+      sound: { name: "default", critical: 1, volume: 1.0 },
+    });
+    expect(s.requests[0].body.data.channel).toBe("alarm_stream");
+  });
+
+  it("sends non-urgent messages, like status notes, normally", async () => {
+    const s = await server();
+    await createHaNotify("mobile_app_x", "t", s.base, "critical").send({ title: "status", lines: ["x"] });
+    expect(s.requests[0].body.data).toBeUndefined();
+  });
+
+  it("keeps the tap-to-open link alongside the loudness settings", async () => {
+    const s = await server();
+    await createHaNotify("mobile_app_x", "t", s.base, "time_sensitive").send(urgent);
+    expect(s.requests[0].body.data.url).toBe(msg.url);
+    expect(s.requests[0].body.data.clickAction).toBe(msg.url);
   });
 });
 

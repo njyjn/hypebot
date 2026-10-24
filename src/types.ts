@@ -45,6 +45,7 @@ export interface AlertMessage {
   lines: string[];
   url?: string; // where tapping the alert goes
   links?: { label: string; url: string }[]; // one buy link per model when several restock at once
+  urgent?: boolean; // stock alerts: delivered as loudly as the destination allows
 }
 
 export interface Notifier {

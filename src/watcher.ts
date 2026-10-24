@@ -1,5 +1,5 @@
 import type { Config } from "./config.js";
-import { formatSoldOut, formatStatus, formatStockAlert } from "./format.js";
+import { formatReminder, formatSoldOut, formatStatus, formatStockAlert } from "./format.js";
 import { sendAll } from "./notifiers/index.js";
 import { saveState, type StockState } from "./state.js";
 import type { Availability, Notifier, Source, StoreStock, WatchItem } from "./types.js";
@@ -17,6 +17,8 @@ export interface Ctx {
   notifiers: Notifier[];
   state: StockState;
   sensors: (items: WatchItem[], now: Availability[]) => Promise<void>;
+  now?: () => number; // clock, swappable in tests
+  lastAlerted?: Map<string, number>; // item id -> when we last alerted about it (for reminders)
 }
 
 /** One pass over every shop: check, alert on changes, update sensors, remember the result. */
@@ -47,6 +49,7 @@ export async function runCheck(ctx: Ctx): Promise<void> {
 
   const changes = diffAvailability(checkedItems, ctx.state, now);
   if (changes.newlyInStock.length > 0) await sendAll(ctx.notifiers, formatStockAlert(changes.newlyInStock));
+  await sendReminders(ctx, checkedItems, now, changes);
   if (ctx.cfg.notifySoldOut && changes.soldOut.length > 0) await sendAll(ctx.notifiers, formatSoldOut(changes.soldOut));
 
   await ctx.sensors(checkedItems, now);
@@ -127,4 +130,31 @@ export class FailureTracker {
     const backoff = baseMs * 2 ** Math.min(this.count, 20);
     return Math.max(baseMs, Math.min(backoff, MAX_BACKOFF_MS));
   }
+}
+
+/** Re-alert about models still in stock once `remind_every_minutes` has passed since the last alert. */
+async function sendReminders(ctx: Ctx, items: WatchItem[], now: Availability[], changes: Changes): Promise<void> {
+  const clock = (ctx.now ?? Date.now)();
+  const last = (ctx.lastAlerted ??= new Map());
+  const remindMs = ctx.cfg.remindEveryMinutes * 60_000;
+  const byId = new Map(now.map((a) => [a.itemId, a.stores]));
+
+  for (const { item } of changes.newlyInStock) last.set(item.id, clock);
+  const due: Changes["newlyInStock"] = [];
+  for (const item of items) {
+    const stores = byId.get(item.id) ?? [];
+    if (stores.length === 0) {
+      last.delete(item.id);
+      continue;
+    }
+    const at = last.get(item.id);
+    if (at === undefined) {
+      last.set(item.id, clock); // e.g. still in stock from before a restart: start the timer now
+    } else if (remindMs > 0 && clock - at >= remindMs) {
+      due.push({ item, stores });
+    }
+  }
+  if (due.length === 0) return;
+  for (const { item } of due) last.set(item.id, clock);
+  await sendAll(ctx.notifiers, formatReminder(due));
 }
