@@ -21,3 +21,12 @@ export interface MoodBatch {
   items: number;
   themes: MoodTheme[];
 }
+
+/** Everything mood keeps in /data/mood.json. */
+export interface MoodState {
+  batches: MoodBatch[];
+  seen: Record<string, number>; // item id -> when it was analysed
+  lastDigestDate?: string; // local YYYY-MM-DD
+  failuresInARow: number;
+  alerted: boolean;
+}
