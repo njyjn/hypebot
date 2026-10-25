@@ -1,12 +1,17 @@
 import { loadConfig, type Config } from "./config.js";
 import { formatStatus } from "./format.js";
 import { runDeliveryCheck } from "./delivery.js";
-import { updateDeliverySensor, updateHealthSensor, updateSensors } from "./ha-sensors.js";
+import { updateDeliverySensor, updateHealthSensor, updateMoodSensor, updateSensors } from "./ha-sensors.js";
 import { buildNotifiers, sendAll } from "./notifiers/index.js";
 import { createAppleSg } from "./sources/apple-sg.js";
 import { loadState } from "./state.js";
 import type { Source, WatchConfig, WatchItem } from "./types.js";
 import { loadHealth } from "./health.js";
+import { callAiTask } from "./mood/analyse.js";
+import { startMood } from "./mood/index.js";
+import { startMoodWhenReady, type ReadyCheck } from "./mood/startup.js";
+import { collect } from "./mood/sources.js";
+import { HA_API } from "./notifiers/ha.js";
 import { FailureTracker, runCheck, saveHealthNow, type Ctx, type Group } from "./watcher.js";
 
 const RESOLVE_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -115,6 +120,7 @@ async function main() {
   };
 
   onExit = () => saveHealthNow(ctx);
+  if (cfg.mood.enabled) startMoodInBackground(cfg, notifiers);
 
   let deliveryCheckedAt = 0;
   for (;;) {
@@ -142,6 +148,33 @@ async function main() {
     const delay = Math.max(...ctx.groups.map((g) => g.failures.delayMs(cfg.intervalSeconds * 1000)));
     await sleep(delay + Math.random() * JITTER_MS);
   }
+}
+
+/** Start mood tracking in the background once the AI Task entity exists. Never blocks stock checks. */
+function startMoodInBackground(cfg: Config, notifiers: ReturnType<typeof buildNotifiers>): void {
+  const token = process.env.SUPERVISOR_TOKEN;
+  const entity = cfg.mood.aiTaskEntity;
+  const check = async (): Promise<ReadyCheck> => {
+    if (!token) return { ok: false, problem: "Mood tracking needs Home Assistant (no Supervisor token), so it is off.", permanent: true };
+    const res = await fetch(`${HA_API}/states/${entity}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
+    if (res.ok) return { ok: true };
+    return { ok: false, problem: res.status === 404 ? `${entity} doesn't exist yet; set mood_ai_task_entity to an AI Task entity` : `checking ${entity} failed (HTTP ${res.status})` };
+  };
+  void startMoodWhenReady({
+    check,
+    alert: (title, detail) => sendAll(notifiers, formatStatus(title, detail)),
+    start: () => {
+      console.log(`Mood tracking on: r/${cfg.mood.subreddits.join(", r/") || "(none)"}${cfg.mood.newsQuery ? ` and news for "${cfg.mood.newsQuery}"` : ""}, Reddit via ${cfg.mood.redditClientId ? "login" : "public feed"}, digest at ${cfg.mood.digestTime}.`);
+      startMood({
+        cfg: cfg.mood,
+        statePath: cfg.moodStatePath,
+        notifiers,
+        collect,
+        ai: (body) => callAiTask(body, { token: token! }),
+        sensor: (s, now, sources) => updateMoodSensor(s, now, sources, { token }),
+      });
+    },
+  }).catch((error) => console.error(`Mood: startup failed: ${message(error)}`));
 }
 
 // Set once the watch loop starts, so stopping the add-on keeps the latest health counts.

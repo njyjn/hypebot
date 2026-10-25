@@ -1,6 +1,8 @@
 import { HA_API } from "./notifiers/ha.js";
 import { postJson } from "./notifiers/post.js";
 import type { HealthSummary } from "./health.js";
+import { moodLabel, score24h } from "./mood/store.js";
+import type { MoodState } from "./mood/types.js";
 import type { Availability, DeliveryDate, WatchItem } from "./types.js";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -100,6 +102,38 @@ export async function updateDeliverySensor(
           device_class: "date",
           earliest_model: `${earliest.productName} ${earliest.variantName}`,
           models: Object.fromEntries(known.map((i) => [`${i.productName} ${i.variantName}`, dates.get(i.id)!.date])),
+        },
+      },
+      { Authorization: `Bearer ${opts.token}` },
+    );
+  } catch (error) {
+    console.error(`Updating ${id} failed: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+const MOOD_ICONS = { negative: "mdi:emoticon-sad-outline", mixed: "mdi:emoticon-neutral-outline", positive: "mdi:emoticon-happy-outline" };
+
+/** sensor.hypebot_iphone_duo_mood: the item-weighted mood of the last 24 hours, -1 to 1. */
+export async function updateMoodSensor(s: MoodState, now: number, sources: string[], opts: { token?: string; apiBase?: string }): Promise<void> {
+  if (!opts.token) return;
+  const id = "sensor.hypebot_iphone_duo_mood";
+  const current = score24h(s, now);
+  const label = current ? moodLabel(current.score) : "mixed";
+  const latest = s.batches.at(-1);
+  try {
+    await postJson(
+      `${opts.apiBase ?? HA_API}/states/${id}`,
+      {
+        state: current ? current.score : "unknown",
+        attributes: {
+          friendly_name: "HypeBot iPhone Duo mood",
+          icon: MOOD_ICONS[label],
+          state_class: "measurement",
+          label: current ? label : "unknown",
+          items_24h: current?.items ?? 0,
+          themes: (latest?.themes ?? []).map((t) => t.text).join("\n"),
+          last_updated: new Date(now).toISOString(),
+          sources: sources.join(", "),
         },
       },
       { Authorization: `Bearer ${opts.token}` },

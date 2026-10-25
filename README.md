@@ -158,6 +158,55 @@ When it leaves `ok` you get one "⚠️ Apple SG is refusing some checks" alert,
 and one "✅ healthy again" when it recovers. If it happens, raise
 `interval_seconds` (e.g. 90) for a while.
 
+## iPhone Duo mood (optional)
+
+Turn on `mood_enabled` to get a feel for how people find the iPhone Duo,
+from Reddit and the news, scored by the AI Task already set up in your
+Home Assistant (e.g. the Anthropic integration's `ai_task.claude_ai_task`).
+HypeBot needs no AI key of its own.
+
+| Option | Default | Notes |
+|---|---|---|
+| `mood_enabled` | `false` | Turns mood tracking on. |
+| `mood_ai_task_entity` | `ai_task.claude_ai_task` | Any AI Task entity that can generate data. |
+| `mood_subreddits` | `[iPhoneDuo]` | Subreddit names, without `r/`. |
+| `mood_news_enabled` | `true` | Also read Google News. |
+| `mood_news_query` | `iPhone Duo` | Google News search (Singapore edition). |
+| `mood_digest_time` | `21:00` | When the daily digest is sent, in Home Assistant's local time. |
+| `reddit_client_id` / `reddit_client_secret` | | Optional Reddit login (see below). |
+
+Every 30 minutes HypeBot reads new posts and headlines and sends them, in
+one batch, to the AI Task, which returns a mood score from −1 (negative) to
++1 (positive) and the main themes. Posts are passed as data to describe,
+never as instructions.
+
+- `sensor.hypebot_iphone_duo_mood`: the last 24 hours' score (weighted by
+  how many posts each batch had), with `label` (negative below −0.2,
+  positive above 0.2, otherwise mixed), `items_24h`, the latest `themes`
+  and the `sources` read.
+- At `mood_digest_time`, one message to your alert destinations, e.g.
+  `📊 iPhone Duo mood: -0.25 (negative), was +0.10 yesterday · 40 posts`,
+  followed by a short AI-written summary. HypeBot works out the numbers
+  itself; the AI only writes the summary.
+
+**Reddit:** without a login HypeBot reads the subreddit's public feed (titles
+and post text). Reddit may refuse it at times; that run then uses the news
+only. A Reddit login adds the top comments of the busiest posts, but new
+Reddit apps now need Reddit's approval under its
+[Responsible Builder Policy](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy).
+If you're approved, create a "script" app and enter its ID and secret.
+
+**Cost:** at most 48 small AI calls a day plus one for the digest, billed to
+the account behind your AI Task integration.
+
+Mood runs separately from stock checks; if Reddit, the news or the AI Task
+fails, stock alerts are not affected. After 6 failed AI calls in a row you
+get one "⚠️ HypeBot mood can't reach the AI Task" alert. If the AI Task
+entity doesn't exist yet when HypeBot starts (e.g. Home Assistant is still
+loading after a reboot), HypeBot keeps checking and starts mood once it
+appears, alerting only if it's still missing after 10 minutes. History is kept in
+`/data/mood.json`.
+
 ## When things go wrong
 
 - **Apple refuses or fails a check:** HypeBot logs it, backs off, and keeps
