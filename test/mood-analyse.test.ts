@@ -108,3 +108,19 @@ describe("callAiTask", () => {
     await expect(callAiTask({}, { token: "sup", apiBase: s.base })).rejects.toThrow(/500/);
   });
 });
+
+describe("link stripping", () => {
+  it("removes links the model writes into theme text", () => {
+    const r = readBatchReply({ score: 0, themes: "Giveaway buzz at duo-sg-promo.example/win [1]\nSee https://evil.example now\nVisit www.scam.example" }, [item(1)]);
+    expect(r.themes.map((t) => t.text)).toEqual(["Giveaway buzz at [link removed]", "See [link removed] now", "Visit [link removed]"]);
+    expect(r.themes[0].url).toBe(item(1).url);
+  });
+
+  it("removes links from the digest text", () => {
+    expect(readDigestReply("Hype is high.\nGrab it at https://evil.example/x or bit.ly/abc")).toBe("Hype is high.\nGrab it at [link removed] or [link removed]");
+  });
+
+  it("leaves ordinary text with dots alone", () => {
+    expect(readDigestReply("Mood fell to -0.25. iOS 26.1 fixed it.")).toBe("Mood fell to -0.25. iOS 26.1 fixed it.");
+  });
+});

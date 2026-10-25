@@ -148,7 +148,7 @@ function moodConfig(raw: Record<string, unknown>, pick: (k: string) => unknown, 
       .filter((x): x is string => typeof x === "string")
       .map((x) => x.trim().replace(/^\/?r\//i, "").replace(/\/+$/, ""))
       .filter(Boolean),
-    newsQuery: pick("mood_news_query") === undefined ? "iPhone Duo" : str("mood_news_query"),
+    newsQuery: pick("mood_news_enabled") !== undefined && !bool("mood_news_enabled") ? "" : pick("mood_news_query") === undefined ? "iPhone Duo" : str("mood_news_query"),
     digestTime,
     redditClientId,
     redditClientSecret,

@@ -170,7 +170,8 @@ HypeBot needs no AI key of its own.
 | `mood_enabled` | `false` | Turns mood tracking on. |
 | `mood_ai_task_entity` | `ai_task.claude_ai_task` | Any AI Task entity that can generate data. |
 | `mood_subreddits` | `[iPhoneDuo]` | Subreddit names, without `r/`. |
-| `mood_news_query` | `iPhone Duo` | Google News search (Singapore edition). Empty turns news off. |
+| `mood_news_enabled` | `true` | Also read Google News. |
+| `mood_news_query` | `iPhone Duo` | Google News search (Singapore edition). |
 | `mood_digest_time` | `21:00` | When the daily digest is sent, in Home Assistant's local time. |
 | `reddit_client_id` / `reddit_client_secret` | | Optional Reddit login (see below). |
 
@@ -200,7 +201,10 @@ the account behind your AI Task integration.
 
 Mood runs separately from stock checks; if Reddit, the news or the AI Task
 fails, stock alerts are not affected. After 6 failed AI calls in a row you
-get one "⚠️ HypeBot mood can't reach the AI Task" alert. History is kept in
+get one "⚠️ HypeBot mood can't reach the AI Task" alert. If the AI Task
+entity doesn't exist yet when HypeBot starts (e.g. Home Assistant is still
+loading after a reboot), HypeBot keeps checking and starts mood once it
+appears, alerting only if it's still missing after 10 minutes. History is kept in
 `/data/mood.json`.
 
 ## When things go wrong

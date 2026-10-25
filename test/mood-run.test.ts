@@ -17,7 +17,7 @@ const item = (n: number): MoodItem => ({
   title: `Post ${n}`,
   text: "",
   url: `https://www.reddit.com/r/iPhoneDuo/comments/${n}/`,
-  createdAt: 1000 + n, // larger n = newer
+  createdAt: at("11:00") + n * 1000, // recent; larger n = newer
 });
 
 function makeCtx(over: Partial<MoodCtx> & { items?: MoodItem[]; clock?: number } = {}) {
@@ -41,6 +41,19 @@ function makeCtx(over: Partial<MoodCtx> & { items?: MoodItem[]; clock?: number }
 }
 
 describe("runMoodCycle", () => {
+  it("ignores items older than 48 hours or with no date", async () => {
+    const now = at("12:00");
+    const old = { ...item(1), createdAt: now - 49 * H };
+    const undated = { ...item(2), createdAt: 0 };
+    const fresh = { ...item(3), createdAt: now - 47 * H };
+    const { ctx, ai } = makeCtx({ items: [old, undated, fresh] });
+    const state = emptyMood();
+    await runMoodCycle(ctx, state);
+    expect(state.batches[0].items).toBe(1);
+    expect(ai.mock.calls[0][0].instructions).toContain("Post 3");
+    expect(ai.mock.calls[0][0].instructions).not.toContain("Post 1");
+  });
+
   it("analyses new items once, saves a batch and marks them seen", async () => {
     const { ctx, ai, sensor } = makeCtx();
     const state = emptyMood();
@@ -148,7 +161,18 @@ describe("maybeSendDigest", () => {
     ai.mockRejectedValue(new Error("timeout"));
     await maybeSendDigest(ctx, dayState());
     expect(sent[0].title).toMatch(/^📊 iPhone Duo mood: -0.25/);
-    expect(sent[0].lines).toEqual(["Love the screen: https://r/1", "Hinge cracks: https://r/2"]);
+    expect(sent[0].lines).toEqual(["Hinge cracks: https://r/2", "Love the screen: https://r/1"]);
+  });
+
+  it("keeps the fallback digest to the 8 newest distinct themes", async () => {
+    const { ctx, ai, sent } = makeCtx({ clock: at("21:00") });
+    ai.mockRejectedValue(new Error("timeout"));
+    const state = {
+      ...emptyMood(),
+      batches: Array.from({ length: 12 }, (_, i) => ({ at: at("09:00") + i * H, score: 0, items: 1, themes: [{ text: `T${i}` }, { text: "Same" }] })),
+    };
+    await maybeSendDigest(ctx, state);
+    expect(sent[0].lines).toEqual(["T11", "Same", "T10", "T9", "T8", "T7", "T6", "T5"]);
   });
 
   it("says so when there were no posts today", async () => {

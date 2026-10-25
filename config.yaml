@@ -33,6 +33,7 @@ options:
   mood_ai_task_entity: ai_task.claude_ai_task
   mood_subreddits:
     - iPhoneDuo
+  mood_news_enabled: true
   mood_news_query: "iPhone Duo"
   mood_digest_time: "21:00"
   reddit_client_id: ""
@@ -63,6 +64,7 @@ schema:
   mood_ai_task_entity: "str"
   mood_subreddits:
     - "str?"
+  mood_news_enabled: "bool"
   mood_news_query: "str?"
   mood_digest_time: "match(^\\d{2}:\\d{2}$)"
   reddit_client_id: "str?"

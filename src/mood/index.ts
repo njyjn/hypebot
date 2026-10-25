@@ -11,6 +11,8 @@ const DIGEST_WINDOW_MIN = 10; // a digest missed by more than this is skipped
 const MAX_ITEMS = 60;
 const ALERT_AFTER_FAILURES = 6;
 const DAY = 24 * 3_600_000;
+const MAX_ITEM_AGE_MS = 2 * DAY; // feeds keep old posts for weeks; only recent ones count
+const MAX_FALLBACK_THEMES = 8;
 
 export interface MoodCtx {
   cfg: MoodConfig;
@@ -44,7 +46,7 @@ export async function runMoodCycle(ctx: MoodCtx, state: MoodState): Promise<void
     reddit: ctx.cfg.redditClientId && ctx.cfg.redditClientSecret ? { clientId: ctx.cfg.redditClientId, clientSecret: ctx.cfg.redditClientSecret } : undefined,
     log,
   });
-  const fresh = items.filter((i) => state.seen[i.id] === undefined).slice(0, MAX_ITEMS);
+  const fresh = items.filter((i) => state.seen[i.id] === undefined && i.createdAt > 0 && now - i.createdAt <= MAX_ITEM_AGE_MS).slice(0, MAX_ITEMS);
 
   if (fresh.length > 0) {
     try {
@@ -110,7 +112,9 @@ export async function maybeSendDigest(ctx: MoodCtx, state: MoodState): Promise<b
     lines = readDigestReply(await ctx.ai(buildDigestRequest(ctx.cfg.aiTaskEntity, today, yesterday))).split("\n").filter((l) => l.trim());
   } catch (error) {
     (ctx.log ?? console.warn)(`Mood: digest AI call failed, sending the themes instead: ${message(error)}`);
-    lines = today.flatMap((b) => b.themes).map((t) => (t.url ? `${t.text}: ${t.url}` : t.text));
+    const newestFirst = [...today].reverse().flatMap((b) => b.themes);
+    const unique = newestFirst.filter((t, i) => newestFirst.findIndex((u) => u.text === t.text) === i).slice(0, MAX_FALLBACK_THEMES);
+    lines = unique.map((t) => (t.url ? `${t.text}: ${t.url}` : t.text));
   }
   const msg: AlertMessage = { title, lines };
   await sendAll(ctx.notifiers, msg);

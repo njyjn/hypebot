@@ -232,13 +232,18 @@ describe("mood settings", () => {
     expect(cfg.warnings.join(" ")).not.toContain("abc123");
   });
 
+  it("mood_news_enabled: false turns news off", () => {
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ mood_news_enabled: false, mood_news_query: "iPhone Duo" }) }).mood.newsQuery).toBe("");
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ mood_news_enabled: true }) }).mood.newsQuery).toBe("iPhone Duo");
+  });
+
   it("an empty news query turns news off", () => {
     expect(loadConfig({ OPTIONS_PATH: optionsFile({ mood_news_query: "" }) }).mood.newsQuery).toBe("");
   });
 
   it("config.yaml has every mood option with matching defaults", () => {
     const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
-    for (const line of ["mood_enabled: false", "mood_ai_task_entity: ai_task.claude_ai_task", "mood_news_query: \"iPhone Duo\"", "mood_digest_time: \"21:00\"", "reddit_client_secret: \"password?\""]) {
+    for (const line of ["mood_enabled: false", "mood_news_enabled: true", "mood_news_enabled: \"bool\"", "mood_ai_task_entity: ai_task.claude_ai_task", "mood_news_query: \"iPhone Duo\"", "mood_digest_time: \"21:00\"", "reddit_client_secret: \"password?\""]) {
       expect(yaml).toContain(line);
     }
     expect(yaml).toMatch(/mood_subreddits:\n    - iPhoneDuo/);

@@ -9,6 +9,7 @@ import type { Source, WatchConfig, WatchItem } from "./types.js";
 import { loadHealth } from "./health.js";
 import { callAiTask } from "./mood/analyse.js";
 import { startMood } from "./mood/index.js";
+import { startMoodWhenReady, type ReadyCheck } from "./mood/startup.js";
 import { collect } from "./mood/sources.js";
 import { HA_API } from "./notifiers/ha.js";
 import { FailureTracker, runCheck, saveHealthNow, type Ctx, type Group } from "./watcher.js";
@@ -119,7 +120,7 @@ async function main() {
   };
 
   onExit = () => saveHealthNow(ctx);
-  if (cfg.mood.enabled) await startMoodIfReady(cfg, notifiers);
+  if (cfg.mood.enabled) startMoodInBackground(cfg, notifiers);
 
   let deliveryCheckedAt = 0;
   for (;;) {
@@ -149,36 +150,31 @@ async function main() {
   }
 }
 
-/** Start mood tracking in the background once the AI Task entity is confirmed. */
-async function startMoodIfReady(cfg: Config, notifiers: ReturnType<typeof buildNotifiers>): Promise<void> {
+/** Start mood tracking in the background once the AI Task entity exists. Never blocks stock checks. */
+function startMoodInBackground(cfg: Config, notifiers: ReturnType<typeof buildNotifiers>): void {
   const token = process.env.SUPERVISOR_TOKEN;
   const entity = cfg.mood.aiTaskEntity;
-  let problem = "";
-  if (!token) {
-    problem = "Mood tracking needs Home Assistant (no Supervisor token), so it is off.";
-  } else {
-    try {
-      const res = await fetch(`${HA_API}/states/${entity}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
-      if (res.status === 404) problem = `Mood tracking is off: ${entity} doesn't exist. Set mood_ai_task_entity to an AI Task entity.`;
-      else if (!res.ok) problem = `Mood tracking is off: checking ${entity} failed (HTTP ${res.status}).`;
-    } catch (error) {
-      problem = `Mood tracking is off: checking ${entity} failed (${message(error)}).`;
-    }
-  }
-  if (problem) {
-    console.error(problem);
-    await sendAll(notifiers, formatStatus("⚠️ HypeBot mood is off", problem));
-    return;
-  }
-  console.log(`Mood tracking on: r/${cfg.mood.subreddits.join(", r/") || "(none)"}${cfg.mood.newsQuery ? ` and news for "${cfg.mood.newsQuery}"` : ""}, Reddit via ${cfg.mood.redditClientId ? "login" : "public feed"}, digest at ${cfg.mood.digestTime}.`);
-  startMood({
-    cfg: cfg.mood,
-    statePath: cfg.moodStatePath,
-    notifiers,
-    collect,
-    ai: (body) => callAiTask(body, { token: token! }),
-    sensor: (s, now, sources) => updateMoodSensor(s, now, sources, { token }),
-  });
+  const check = async (): Promise<ReadyCheck> => {
+    if (!token) return { ok: false, problem: "Mood tracking needs Home Assistant (no Supervisor token), so it is off.", permanent: true };
+    const res = await fetch(`${HA_API}/states/${entity}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
+    if (res.ok) return { ok: true };
+    return { ok: false, problem: res.status === 404 ? `${entity} doesn't exist yet; set mood_ai_task_entity to an AI Task entity` : `checking ${entity} failed (HTTP ${res.status})` };
+  };
+  void startMoodWhenReady({
+    check,
+    alert: (title, detail) => sendAll(notifiers, formatStatus(title, detail)),
+    start: () => {
+      console.log(`Mood tracking on: r/${cfg.mood.subreddits.join(", r/") || "(none)"}${cfg.mood.newsQuery ? ` and news for "${cfg.mood.newsQuery}"` : ""}, Reddit via ${cfg.mood.redditClientId ? "login" : "public feed"}, digest at ${cfg.mood.digestTime}.`);
+      startMood({
+        cfg: cfg.mood,
+        statePath: cfg.moodStatePath,
+        notifiers,
+        collect,
+        ai: (body) => callAiTask(body, { token: token! }),
+        sensor: (s, now, sources) => updateMoodSensor(s, now, sources, { token }),
+      });
+    },
+  }).catch((error) => console.error(`Mood: startup failed: ${message(error)}`));
 }
 
 // Set once the watch loop starts, so stopping the add-on keeps the latest health counts.
