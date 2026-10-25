@@ -178,3 +178,69 @@ describe("model dropdown", () => {
     for (const d of defaults) expect(Object.keys(APPLE_SG_MODELS)).toContain(d);
   });
 });
+
+describe("mood settings", () => {
+  it("defaults to off with the spec's defaults", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: missing });
+    expect(cfg.mood).toEqual({
+      enabled: false,
+      aiTaskEntity: "ai_task.claude_ai_task",
+      subreddits: ["iPhoneDuo"],
+      newsQuery: "iPhone Duo",
+      digestTime: "21:00",
+      redditClientId: "",
+      redditClientSecret: "",
+    });
+    expect(cfg.moodStatePath).toBe("/data/mood.json");
+  });
+
+  it("reads the options and strips r/ from subreddit names", () => {
+    const cfg = loadConfig({
+      OPTIONS_PATH: optionsFile({
+        mood_enabled: true,
+        mood_ai_task_entity: "ai_task.openai_ai_task",
+        mood_subreddits: ["r/iPhoneDuo", "/r/apple/", "  "],
+        mood_news_query: "iPhone Duo Singapore",
+        mood_digest_time: "07:30",
+        reddit_client_id: "id",
+        reddit_client_secret: "sec",
+      }),
+    });
+    expect(cfg.mood).toEqual({
+      enabled: true,
+      aiTaskEntity: "ai_task.openai_ai_task",
+      subreddits: ["iPhoneDuo", "apple"],
+      newsQuery: "iPhone Duo Singapore",
+      digestTime: "07:30",
+      redditClientId: "id",
+      redditClientSecret: "sec",
+    });
+  });
+
+  it("falls back to 21:00 for a bad digest time, with a warning", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ mood_digest_time: "9pm" }) });
+    expect(cfg.mood.digestTime).toBe("21:00");
+    expect(cfg.warnings.join(" ")).toMatch(/mood_digest_time/);
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ mood_digest_time: "25:00" }) }).mood.digestTime).toBe("21:00");
+  });
+
+  it("warns and uses RSS when only one Reddit field is set, without printing it", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ reddit_client_id: "abc123" }) });
+    expect(cfg.mood.redditClientId).toBe("");
+    expect(cfg.mood.redditClientSecret).toBe("");
+    expect(cfg.warnings.join(" ")).toMatch(/reddit_client_secret/);
+    expect(cfg.warnings.join(" ")).not.toContain("abc123");
+  });
+
+  it("an empty news query turns news off", () => {
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ mood_news_query: "" }) }).mood.newsQuery).toBe("");
+  });
+
+  it("config.yaml has every mood option with matching defaults", () => {
+    const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
+    for (const line of ["mood_enabled: false", "mood_ai_task_entity: ai_task.claude_ai_task", "mood_news_query: \"iPhone Duo\"", "mood_digest_time: \"21:00\"", "reddit_client_secret: \"password?\""]) {
+      expect(yaml).toContain(line);
+    }
+    expect(yaml).toMatch(/mood_subreddits:\n    - iPhoneDuo/);
+  });
+});

@@ -1,5 +1,5 @@
 name: "HypeBot"
-version: "0.5.1"
+version: "0.6.0"
 slug: "hypebot"
 description: "Alerts when hard-to-find products are in stock for store pickup"
 url: "https://github.com/njyjn/hypebot"
@@ -29,6 +29,14 @@ options:
   slack_channel: ""
   telegram_bot_token: ""
   telegram_chat_id: ""
+  mood_enabled: false
+  mood_ai_task_entity: ai_task.claude_ai_task
+  mood_subreddits:
+    - iPhoneDuo
+  mood_news_query: "iPhone Duo"
+  mood_digest_time: "21:00"
+  reddit_client_id: ""
+  reddit_client_secret: ""
 schema:
   interval_seconds: "int(30,3600)"
   models:
@@ -51,3 +59,11 @@ schema:
   slack_channel: "str?"
   telegram_bot_token: "password?"
   telegram_chat_id: "str?"
+  mood_enabled: "bool"
+  mood_ai_task_entity: "str"
+  mood_subreddits:
+    - "str?"
+  mood_news_query: "str?"
+  mood_digest_time: "match(^\\d{2}:\\d{2}$)"
+  reddit_client_id: "str?"
+  reddit_client_secret: "password?"

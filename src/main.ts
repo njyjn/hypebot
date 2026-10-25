@@ -1,12 +1,16 @@
 import { loadConfig, type Config } from "./config.js";
 import { formatStatus } from "./format.js";
 import { runDeliveryCheck } from "./delivery.js";
-import { updateDeliverySensor, updateHealthSensor, updateSensors } from "./ha-sensors.js";
+import { updateDeliverySensor, updateHealthSensor, updateMoodSensor, updateSensors } from "./ha-sensors.js";
 import { buildNotifiers, sendAll } from "./notifiers/index.js";
 import { createAppleSg } from "./sources/apple-sg.js";
 import { loadState } from "./state.js";
 import type { Source, WatchConfig, WatchItem } from "./types.js";
 import { loadHealth } from "./health.js";
+import { callAiTask } from "./mood/analyse.js";
+import { startMood } from "./mood/index.js";
+import { collect } from "./mood/sources.js";
+import { HA_API } from "./notifiers/ha.js";
 import { FailureTracker, runCheck, saveHealthNow, type Ctx, type Group } from "./watcher.js";
 
 const RESOLVE_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -115,6 +119,7 @@ async function main() {
   };
 
   onExit = () => saveHealthNow(ctx);
+  if (cfg.mood.enabled) await startMoodIfReady(cfg, notifiers);
 
   let deliveryCheckedAt = 0;
   for (;;) {
@@ -142,6 +147,38 @@ async function main() {
     const delay = Math.max(...ctx.groups.map((g) => g.failures.delayMs(cfg.intervalSeconds * 1000)));
     await sleep(delay + Math.random() * JITTER_MS);
   }
+}
+
+/** Start mood tracking in the background once the AI Task entity is confirmed. */
+async function startMoodIfReady(cfg: Config, notifiers: ReturnType<typeof buildNotifiers>): Promise<void> {
+  const token = process.env.SUPERVISOR_TOKEN;
+  const entity = cfg.mood.aiTaskEntity;
+  let problem = "";
+  if (!token) {
+    problem = "Mood tracking needs Home Assistant (no Supervisor token), so it is off.";
+  } else {
+    try {
+      const res = await fetch(`${HA_API}/states/${entity}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
+      if (res.status === 404) problem = `Mood tracking is off: ${entity} doesn't exist. Set mood_ai_task_entity to an AI Task entity.`;
+      else if (!res.ok) problem = `Mood tracking is off: checking ${entity} failed (HTTP ${res.status}).`;
+    } catch (error) {
+      problem = `Mood tracking is off: checking ${entity} failed (${message(error)}).`;
+    }
+  }
+  if (problem) {
+    console.error(problem);
+    await sendAll(notifiers, formatStatus("⚠️ HypeBot mood is off", problem));
+    return;
+  }
+  console.log(`Mood tracking on: r/${cfg.mood.subreddits.join(", r/") || "(none)"}${cfg.mood.newsQuery ? ` and news for "${cfg.mood.newsQuery}"` : ""}, Reddit via ${cfg.mood.redditClientId ? "login" : "public feed"}, digest at ${cfg.mood.digestTime}.`);
+  startMood({
+    cfg: cfg.mood,
+    statePath: cfg.moodStatePath,
+    notifiers,
+    collect,
+    ai: (body) => callAiTask(body, { token: token! }),
+    sensor: (s, now, sources) => updateMoodSensor(s, now, sources, { token }),
+  });
 }
 
 // Set once the watch loop starts, so stopping the add-on keeps the latest health counts.

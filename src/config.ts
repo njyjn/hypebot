@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { APPLE_SG_MODELS } from "./sources/apple-sg-models.js";
+import type { MoodConfig } from "./mood/types.js";
 import type { WatchConfig } from "./types.js";
 
 export type HaNotifyPriority = "normal" | "time_sensitive" | "critical";
@@ -24,6 +25,8 @@ export interface Config {
   trackDeliveryDates: boolean;
   deliveryStatePath: string;
   healthStatePath: string;
+  mood: MoodConfig;
+  moodStatePath: string;
   /** Problems worth logging at startup. Never contains secret values. */
   warnings: string[];
 }
@@ -105,6 +108,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trackDeliveryDates: pick("track_delivery_dates") === undefined ? true : bool("track_delivery_dates"),
     deliveryStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "delivery.json"),
     healthStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "health.json"),
+    mood: moodConfig(raw, pick, str, bool, warnings),
+    moodStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "mood.json"),
     warnings,
   };
 
@@ -119,4 +124,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!anyDestination) cfg.warnings.push("No alert destination configured; only Home Assistant sensors will update");
 
   return cfg;
+}
+
+/** The mood_* options. Missing keys get defaults; an empty news query turns news off. */
+function moodConfig(raw: Record<string, unknown>, pick: (k: string) => unknown, str: (k: string) => string, bool: (k: string) => boolean, warnings: string[]): MoodConfig {
+  const subs = Array.isArray(raw.mood_subreddits) ? (raw.mood_subreddits as unknown[]) : ["iPhoneDuo"];
+  let digestTime = str("mood_digest_time") || "21:00";
+  const m = /^(\d{2}):(\d{2})$/.exec(digestTime);
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) {
+    warnings.push(`mood_digest_time must be HH:MM (24-hour); using 21:00`);
+    digestTime = "21:00";
+  }
+  let redditClientId = str("reddit_client_id");
+  let redditClientSecret = str("reddit_client_secret");
+  if (Boolean(redditClientId) !== Boolean(redditClientSecret)) {
+    warnings.push("Reddit login needs both reddit_client_id and reddit_client_secret; using Reddit's public feed instead");
+    redditClientId = redditClientSecret = "";
+  }
+  return {
+    enabled: bool("mood_enabled"),
+    aiTaskEntity: str("mood_ai_task_entity") || "ai_task.claude_ai_task",
+    subreddits: subs
+      .filter((x): x is string => typeof x === "string")
+      .map((x) => x.trim().replace(/^\/?r\//i, "").replace(/\/+$/, ""))
+      .filter(Boolean),
+    newsQuery: pick("mood_news_query") === undefined ? "iPhone Duo" : str("mood_news_query"),
+    digestTime,
+    redditClientId,
+    redditClientSecret,
+  };
 }
