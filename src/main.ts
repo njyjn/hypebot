@@ -6,7 +6,8 @@ import { buildNotifiers, sendAll } from "./notifiers/index.js";
 import { createAppleSg } from "./sources/apple-sg.js";
 import { loadState } from "./state.js";
 import type { Source, WatchConfig, WatchItem } from "./types.js";
-import { FailureTracker, runCheck, type Ctx, type Group } from "./watcher.js";
+import { loadHealth } from "./health.js";
+import { FailureTracker, runCheck, saveHealthNow, type Ctx, type Group } from "./watcher.js";
 
 const RESOLVE_EVERY_MS = 6 * 60 * 60 * 1000;
 const RESOLVE_RETRY_MS = 10 * 60 * 1000;
@@ -68,6 +69,7 @@ async function main() {
 
   // Resolve names to part numbers, one group per shop.
   const groups: Group[] = [];
+  const savedHealth = loadHealth(cfg.healthStatePath);
   for (const name of new Set(cfg.watch.map((w) => w.source))) {
     const source = SOURCES[name](cfg);
     const entries = cfg.watch.filter((w) => w.source === name);
@@ -79,7 +81,7 @@ async function main() {
       return;
     }
     console.log(`Watching at ${source.label}: ${items.map((i) => `${i.productName} ${i.variantName} (${i.partNumber})`).join("; ")}`);
-    groups.push({ source, items, failures: new FailureTracker() });
+    groups.push({ source, items, failures: new FailureTracker(), health: savedHealth[source.name] });
   }
   let resolvedAt = Date.now();
 
@@ -103,6 +105,7 @@ async function main() {
     groups,
     notifiers,
     state: loadState(cfg.statePath),
+    healthStatePath: cfg.healthStatePath,
     sensors: (its, now) => updateSensors(its, now, { token: process.env.SUPERVISOR_TOKEN, checkedAt: new Date() }),
     healthSensor: (g, s) =>
       updateHealthSensor(g.source.name, g.source.label, s, {
@@ -110,6 +113,8 @@ async function main() {
         waitSeconds: Math.round(g.failures.delayMs(cfg.intervalSeconds * 1000) / 1000),
       }),
   };
+
+  onExit = () => saveHealthNow(ctx);
 
   let deliveryCheckedAt = 0;
   for (;;) {
@@ -139,8 +144,14 @@ async function main() {
   }
 }
 
-process.on("SIGTERM", () => process.exit(0));
-process.on("SIGINT", () => process.exit(0));
+// Set once the watch loop starts, so stopping the add-on keeps the latest health counts.
+let onExit = () => {};
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    onExit();
+    process.exit(0);
+  });
+}
 
 main().catch((error) => {
   console.error(`HypeBot stopped: ${message(error)}`);

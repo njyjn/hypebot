@@ -23,6 +23,7 @@ export interface Config {
   statePath: string;
   trackDeliveryDates: boolean;
   deliveryStatePath: string;
+  healthStatePath: string;
   /** Problems worth logging at startup. Never contains secret values. */
   warnings: string[];
 }
@@ -103,6 +104,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     statePath: env.STATE_PATH || "/data/state.json",
     trackDeliveryDates: pick("track_delivery_dates") === undefined ? true : bool("track_delivery_dates"),
     deliveryStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "delivery.json"),
+    healthStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "health.json"),
     warnings,
   };
 

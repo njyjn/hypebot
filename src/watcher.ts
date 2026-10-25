@@ -1,6 +1,6 @@
 import type { Config } from "./config.js";
 import { formatReminder, formatSoldOut, formatStatus, formatStockAlert } from "./format.js";
-import { HealthTracker, type HealthSummary } from "./health.js";
+import { HealthTracker, saveHealth, type HealthSummary } from "./health.js";
 import { sendAll } from "./notifiers/index.js";
 import { saveState, type StockState } from "./state.js";
 import type { Availability, Notifier, Source, StoreStock, WatchItem } from "./types.js";
@@ -22,6 +22,22 @@ export interface Ctx {
   now?: () => number; // clock, swappable in tests
   lastAlerted?: Map<string, number>; // item id -> when we last alerted about it (for reminders)
   healthSensor?: (group: Group, summary: HealthSummary) => Promise<void>;
+  healthStatePath?: string; // where health survives restarts; unset = memory only
+  healthSavedAt?: number;
+}
+
+const HEALTH_SAVE_EVERY_MS = 5 * 60_000;
+
+/** Write every shop's health now (also used on shutdown). */
+export function saveHealthNow(ctx: Ctx, at = (ctx.now ?? Date.now)()): void {
+  if (!ctx.healthStatePath) return;
+  const trackers = Object.fromEntries(ctx.groups.filter((g) => g.health).map((g) => [g.source.name, g.health!]));
+  try {
+    saveHealth(ctx.healthStatePath, trackers);
+    ctx.healthSavedAt = at;
+  } catch (error) {
+    console.error(`Saving health failed: ${error instanceof Error ? error.message : error}`);
+  }
 }
 
 /** One pass over every shop: check, alert on changes, update sensors, remember the result. */
@@ -54,6 +70,9 @@ export async function runCheck(ctx: Ctx): Promise<void> {
     }
     await reportHealth(ctx, group, clock);
   }
+  // Saved at most every 5 minutes to spare the SD card; a crash loses at most that.
+  const clock = (ctx.now ?? Date.now)();
+  if (ctx.healthSavedAt === undefined || clock - ctx.healthSavedAt >= HEALTH_SAVE_EVERY_MS) saveHealthNow(ctx, clock);
   if (checkedItems.length === 0) return;
 
   const changes = diffAvailability(checkedItems, ctx.state, now);

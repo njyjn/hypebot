@@ -191,3 +191,26 @@ describe("health reporting", () => {
   });
 });
 
+describe("health persistence in runCheck", () => {
+  it("saves health at most every 5 minutes, including after failed checks", async () => {
+    const { loadHealth } = await import("../src/health.js");
+    const { c } = ctx([new Error("Apple SG returned HTTP 541"), none, none]);
+    const healthPath = join(mkdtempSync(join(tmpdir(), "hb-")), "health.json");
+    c.healthStatePath = healthPath;
+    let clock = 0;
+    c.now = () => clock;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCheck(c);
+    err.mockRestore();
+    expect(loadHealth(healthPath).apple_sg.summary(clock, 1).failures).toBe(1);
+
+    clock += 60_000;
+    await runCheck(c);
+    expect(loadHealth(healthPath).apple_sg.summary(clock, 0).checks).toBe(1); // not saved again yet
+
+    clock += 5 * 60_000;
+    await runCheck(c);
+    expect(loadHealth(healthPath).apple_sg.summary(clock, 0).checks).toBe(3);
+  });
+});
+

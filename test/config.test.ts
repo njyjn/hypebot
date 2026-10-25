@@ -155,6 +155,10 @@ describe("delivery date tracking", () => {
     expect(loadConfig({ OPTIONS_PATH: optionsFile({ track_delivery_dates: false }) }).trackDeliveryDates).toBe(false);
   });
 
+  it("keeps health state next to the stock state", () => {
+    expect(loadConfig({ OPTIONS_PATH: missing, STATE_PATH: "/tmp/x/state.json" }).healthStatePath).toBe("/tmp/x/health.json");
+  });
+
   it("keeps delivery state next to the stock state", () => {
     expect(loadConfig({ OPTIONS_PATH: missing, STATE_PATH: "/tmp/x/state.json" }).deliveryStatePath).toBe("/tmp/x/delivery.json");
   });
