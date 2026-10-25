@@ -8,3 +8,16 @@ export interface MoodItem {
   createdAt: number;
   comments?: string[];
 }
+
+export interface MoodTheme {
+  text: string;
+  url?: string; // only ever a link from the items that were analysed
+}
+
+/** One analysed run: the mood of its items and what they were about. */
+export interface MoodBatch {
+  at: number;
+  score: number; // -1 .. 1
+  items: number;
+  themes: MoodTheme[];
+}
