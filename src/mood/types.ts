@@ -30,3 +30,14 @@ export interface MoodState {
   failuresInARow: number;
   alerted: boolean;
 }
+
+/** The mood_* settings. */
+export interface MoodConfig {
+  enabled: boolean;
+  aiTaskEntity: string;
+  subreddits: string[];
+  newsQuery: string;
+  digestTime: string; // "HH:MM", local time
+  redditClientId: string;
+  redditClientSecret: string;
+}

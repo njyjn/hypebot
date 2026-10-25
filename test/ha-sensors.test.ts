@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sensorId, updateDeliverySensor, updateHealthSensor, updateSensors } from "../src/ha-sensors.js";
+import { sensorId, updateDeliverySensor, updateHealthSensor, updateMoodSensor, updateSensors } from "../src/ha-sensors.js";
+import { emptyMood } from "../src/mood/store.js";
 import { duoItem, fakeServer } from "./helpers.js";
 
 const nightSky = duoItem("MK2G4X/A", "Night Sky 512GB");
@@ -139,3 +140,42 @@ describe("updateDeliverySensor", () => {
   });
 });
 
+
+describe("updateMoodSensor", () => {
+  const now = Date.parse("2026-10-25T13:00:00Z");
+  const state = {
+    ...emptyMood(),
+    batches: [
+      { at: now - 3_600_000, score: 0.5, items: 10, themes: [{ text: "old theme" }] },
+      { at: now - 60_000, score: -0.5, items: 30, themes: [{ text: "Hinge cracks", url: "https://r/2" }, { text: "Delivery" }] },
+    ],
+  };
+
+  it("writes the 24h score with label, themes and long-term stats", async () => {
+    const s = await fakeServer();
+    close = s.close;
+    await updateMoodSensor(state, now, ["reddit (rss)", "news"], { token: "sup", apiBase: s.base });
+    expect(s.requests[0].url).toBe("/states/sensor.hypebot_iphone_duo_mood");
+    expect(s.requests[0].body).toEqual({
+      state: -0.25,
+      attributes: {
+        friendly_name: "HypeBot iPhone Duo mood",
+        icon: "mdi:emoticon-sad-outline",
+        state_class: "measurement",
+        label: "negative",
+        items_24h: 40,
+        themes: "Hinge cracks\nDelivery",
+        last_updated: new Date(now).toISOString(),
+        sources: "reddit (rss), news",
+      },
+    });
+  });
+
+  it("is unknown when nothing was analysed in the last 24h", async () => {
+    const s = await fakeServer();
+    close = s.close;
+    await updateMoodSensor(emptyMood(), now, [], { token: "sup", apiBase: s.base });
+    expect(s.requests[0].body.state).toBe("unknown");
+    expect(s.requests[0].body.attributes.items_24h).toBe(0);
+  });
+});
