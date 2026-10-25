@@ -151,6 +151,9 @@ stores tend to get bigger batches for pickup.
   "too many requests" answer), `last_success`, `wait_seconds` (current gap
   between checks, longer while backing off)
 
+The last hour of checks is kept in `/data/health.json` (saved every 5 minutes
+and when the app stops), so restarts don't reset these numbers.
+
 When it leaves `ok` you get one "⚠️ Apple SG is refusing some checks" alert,
 and one "✅ healthy again" when it recovers. If it happens, raise
 `interval_seconds` (e.g. 90) for a while.

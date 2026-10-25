@@ -56,3 +56,38 @@ describe("HealthTracker", () => {
     expect(changes.filter(Boolean)).toEqual(["degraded", "cleared"]);
   });
 });
+
+describe("HealthTracker persistence", () => {
+  it("round-trips its history, last error, last success and alert state", () => {
+    const h = new HealthTracker();
+    for (let i = 0; i < 10; i++) {
+      h.record(i % 2 === 0, i * MIN, "Apple SG returned HTTP 541");
+      h.transition(h.summary(i * MIN, i % 2 === 0 ? 0 : 1));
+    }
+    const restored = HealthTracker.fromJSON(JSON.parse(JSON.stringify(h.toJSON())));
+    expect(restored.summary(10 * MIN, 0)).toEqual(h.summary(10 * MIN, 0));
+    // the degraded alert was already sent, so recovery after restart still clears it once
+    for (let i = 0; i < 70; i++) restored.record(true, (61 + i) * MIN);
+    expect(restored.transition(restored.summary(131 * MIN, 0))).toBe("cleared");
+  });
+
+  it("starts empty from missing or malformed data", () => {
+    expect(HealthTracker.fromJSON(undefined).summary(0, 0)).toMatchObject({ checks: 0, failures: 0, state: "ok" });
+    expect(HealthTracker.fromJSON({ events: "nope" }).summary(0, 0).checks).toBe(0);
+  });
+});
+
+describe("health file", () => {
+  it("saves and loads trackers per shop", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    const { loadHealth, saveHealth } = await import("../src/health.js");
+    const path = join(mkdtempSync(join(tmpdir(), "hb-")), "health.json");
+    const h = new HealthTracker();
+    h.record(false, MIN, "x");
+    saveHealth(path, { apple_sg: h });
+    expect(loadHealth(path).apple_sg.summary(2 * MIN, 1)).toMatchObject({ checks: 1, failures: 1, lastError: "x" });
+    expect(loadHealth(join(path, "..", "missing.json"))).toEqual({});
+  });
+});
