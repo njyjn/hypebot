@@ -198,7 +198,7 @@ describe("startMood", () => {
     vi.useFakeTimers();
     const { ctx } = makeCtx();
     (ctx.collect as any).mockRejectedValueOnce(new Error("network down"));
-    const stop = startMood(ctx);
+    const { stop } = startMood(ctx);
     await vi.advanceTimersByTimeAsync(0);
     expect(ctx.collect).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(30 * 60_000);

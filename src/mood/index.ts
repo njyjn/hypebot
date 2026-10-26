@@ -1,3 +1,4 @@
+import { dailyDue, localClock } from "../clock.js";
 import { sendAll } from "../notifiers/index.js";
 import type { AlertMessage, Notifier } from "../types.js";
 import { buildBatchRequest, buildDigestRequest, readBatchReply, readDigestReply } from "./analyse.js";
@@ -7,7 +8,6 @@ import type { MoodConfig, MoodState } from "./types.js";
 
 const CYCLE_MS = 30 * 60_000;
 const DIGEST_CHECK_MS = 60_000;
-const DIGEST_WINDOW_MIN = 10; // a digest missed by more than this is skipped
 const MAX_ITEMS = 60;
 const ALERT_AFTER_FAILURES = 6;
 const DAY = 24 * 3_600_000;
@@ -76,34 +76,25 @@ export async function runMoodCycle(ctx: MoodCtx, state: MoodState): Promise<void
   save(ctx, state);
 }
 
-/** Local date and minutes past midnight in the configured time zone. */
-function localClock(t: number, timeZone?: string): { date: string; minutes: number } {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
-      .formatToParts(new Date(t))
-      .map((p) => [p.type, p.value]),
-  );
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, minutes: Number(parts.hour) * 60 + Number(parts.minute) };
-}
-
 const signed = (n: number) => `${n < 0 ? "-" : "+"}${Math.abs(n).toFixed(2)}`;
 
 /** Send today's digest if it's digest time and it hasn't gone out yet. */
 export async function maybeSendDigest(ctx: MoodCtx, state: MoodState): Promise<boolean> {
   const now = (ctx.now ?? Date.now)();
-  const { date, minutes } = localClock(now, ctx.timeZone);
-  const [h, m] = ctx.cfg.digestTime.split(":").map(Number);
-  const due = h * 60 + m;
-  if (state.lastDigestDate === date || minutes < due || minutes >= due + DIGEST_WINDOW_MIN) return false;
+  const date = dailyDue(now, ctx.cfg.digestTime, state.lastDigestDate, ctx.timeZone);
+  if (!date) return false;
   state.lastDigestDate = date; // set before any await so overlapping checks send once
   save(ctx, state);
+  await sendAll(ctx.notifiers, await buildMoodDigest(ctx, state, now));
+  return true;
+}
 
+/** Today's mood digest: a header HypeBot computes, then the AI's summary (or the themes if that fails). */
+export async function buildMoodDigest(ctx: MoodCtx, state: MoodState, now: number): Promise<AlertMessage> {
+  const { date } = localClock(now, ctx.timeZone);
   const today = state.batches.filter((b) => localClock(b.at, ctx.timeZone).date === date && b.at <= now);
   const current = score24h(state, now);
-  if (today.length === 0 || !current) {
-    await sendAll(ctx.notifiers, { title: "📊 iPhone Duo mood: no new posts today", lines: [] });
-    return true;
-  }
+  if (today.length === 0 || !current) return { title: "📊 iPhone Duo mood: no new posts today", lines: [] };
   const yesterday = score24h(state, now - DAY)?.score;
   const title = `📊 iPhone Duo mood: ${signed(current.score)} (${moodLabel(current.score)})${yesterday === undefined ? "" : `, was ${signed(yesterday)} yesterday`} · ${current.items} posts`;
 
@@ -116,13 +107,11 @@ export async function maybeSendDigest(ctx: MoodCtx, state: MoodState): Promise<b
     const unique = newestFirst.filter((t, i) => newestFirst.findIndex((u) => u.text === t.text) === i).slice(0, MAX_FALLBACK_THEMES);
     lines = unique.map((t) => (t.url ? `${t.text}: ${t.url}` : t.text));
   }
-  const msg: AlertMessage = { title, lines };
-  await sendAll(ctx.notifiers, msg);
-  return true;
+  return { title, lines };
 }
 
 /** Run mood in the background. Errors are logged and never reach the stock loop. */
-export function startMood(ctx: MoodCtx): () => void {
+export function startMood(ctx: MoodCtx, opts: { digest?: boolean } = {}): { stop: () => void; state: MoodState } {
   const state = loadMood(ctx.statePath);
   const log = ctx.log ?? ((m: string) => console.warn(m));
   let busy = false;
@@ -139,6 +128,7 @@ export function startMood(ctx: MoodCtx): () => void {
   };
   const digest = () => maybeSendDigest(ctx, state).catch((error) => log(`Mood: digest failed: ${message(error)}`));
   void cycle();
-  const timers = [setInterval(cycle, CYCLE_MS), setInterval(digest, DIGEST_CHECK_MS)];
-  return () => timers.forEach(clearInterval);
+  // In daily_summary mode the combined daily message includes mood instead.
+  const timers = [setInterval(cycle, CYCLE_MS), ...(opts.digest === false ? [] : [setInterval(digest, DIGEST_CHECK_MS)])];
+  return { stop: () => timers.forEach(clearInterval), state };
 }

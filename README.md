@@ -33,6 +33,7 @@ It only alerts. It never logs in, reserves or checks out.
 | `remind_every_minutes` | `0` (off) | Re-alert every N minutes (1–60) while a model stays in stock. |
 | `send_test_alert` | `false` | Send a test alert at startup. |
 | `ha_notify_service` | | e.g. `notify.mobile_app_justins_iphone`. Tapping the alert opens the buy page. |
+| `notify_mode` | `instant` | `instant`: alert the moment stock appears. `daily_summary`: no stock pings; one message a day instead (see below). |
 | `ha_notify_priority` | `time_sensitive` | How loudly stock alerts arrive via the HA companion app: `normal`, `time_sensitive` (breaks through Focus modes) or `critical` (rings even on silent). Status messages always arrive normally. |
 | `slack_bot_token` / `slack_channel` | | Both needed. See "Slack bot". |
 | `telegram_bot_token` / `telegram_chat_id` | | Both needed. See "Telegram bot". |
@@ -91,6 +92,29 @@ choose store pickup.
 Set `buy_link_base` to your EPP store address to land in that store instead
 (open the EPP store once in your browser so its Shopping Agreement is
 accepted).
+
+### Daily summary instead of instant alerts
+
+With `notify_mode: daily_summary`, stock drops, still-in-stock reminders,
+sold-out notes and earlier delivery dates are not sent as they happen.
+Sensors and the dashboard still update live. Instead you get one message a
+day at `mood_digest_time` (21:00 by default), e.g.
+
+```
+📊 HypeBot · Mon 26 Oct
+Stock: 2 drops
+• 21:53 Star White 512GB, Orchard Road (~1 min)
+• 21:53 Night Sky 256GB, Jewel Changi Airport (~1 min)
+Delivery: Night Sky 512GB now Mon 18/01/2027 (was Mon 25/01/2027)
+Mood: -0.25 (negative), was +0.10 yesterday · 40 posts
+<summary of the day's discussion>
+```
+
+Durations are as precise as `interval_seconds`. The mood part appears when
+mood tracking is on. Problems ("can't reach Apple SG", Apple refusing
+checks, mood being off) are still sent straight away. The day's events are
+kept in `/data/summary.json`, so a restart doesn't lose them; a message
+missed while the app was off is skipped, not sent late.
 
 ### Loud phone alerts
 
@@ -172,7 +196,7 @@ HypeBot needs no AI key of its own.
 | `mood_subreddits` | `[iPhoneDuo]` | Subreddit names, without `r/`. |
 | `mood_news_enabled` | `true` | Also read Google News. |
 | `mood_news_query` | `iPhone Duo` | Google News search (Singapore edition). |
-| `mood_digest_time` | `21:00` | When the daily digest is sent, in Home Assistant's local time. |
+| `mood_digest_time` | `21:00` | When the daily message is sent (mood digest, or the daily summary), in Home Assistant's local time. |
 | `reddit_client_id` / `reddit_client_secret` | | Optional Reddit login (see below). |
 
 Every 30 minutes HypeBot reads new posts and headlines and sends them, in

@@ -8,7 +8,9 @@ import { loadState } from "./state.js";
 import type { Source, WatchConfig, WatchItem } from "./types.js";
 import { loadHealth } from "./health.js";
 import { callAiTask } from "./mood/analyse.js";
-import { startMood } from "./mood/index.js";
+import { startMood, type MoodCtx } from "./mood/index.js";
+import { startDaily } from "./daily.js";
+import { loadSummary, recordDeliveryChanges, saveSummary } from "./summary.js";
 import { startMoodWhenReady, type ReadyCheck } from "./mood/startup.js";
 import { collect } from "./mood/sources.js";
 import { HA_API } from "./notifiers/ha.js";
@@ -120,7 +122,14 @@ async function main() {
   };
 
   onExit = () => saveHealthNow(ctx);
-  if (cfg.mood.enabled) startMoodInBackground(cfg, notifiers);
+  const summaryMode = cfg.notifyMode === "daily_summary";
+  let mood: ReturnType<typeof startMood> & { ctx: MoodCtx } | undefined;
+  if (cfg.mood.enabled) startMoodInBackground(cfg, notifiers, summaryMode, (m) => (mood = m));
+  if (summaryMode) {
+    ctx.summary = { log: loadSummary(cfg.summaryStatePath), path: cfg.summaryStatePath };
+    startDaily({ time: cfg.mood.digestTime, notifiers, summary: ctx.summary, mood: () => mood });
+    console.log(`Notifications: daily summary at ${cfg.mood.digestTime}; problems are still sent straight away.`);
+  }
 
   let deliveryCheckedAt = 0;
   for (;;) {
@@ -130,6 +139,18 @@ async function main() {
         notifiers,
         statePath: cfg.deliveryStatePath,
         sensor: (source, items, dates) => updateDeliverySensor(source.name, source.label, items, dates, { token: process.env.SUPERVISOR_TOKEN }),
+        ...(ctx.summary
+          ? {
+              onEarlier: (changes) => {
+                recordDeliveryChanges(ctx.summary!.log, changes, Date.now());
+                try {
+                  saveSummary(ctx.summary!.path, ctx.summary!.log);
+                } catch (error) {
+                  console.error(`Saving summary failed: ${message(error)}`);
+                }
+              },
+            }
+          : {}),
       });
       deliveryCheckedAt = Date.now();
     }
@@ -151,7 +172,12 @@ async function main() {
 }
 
 /** Start mood tracking in the background once the AI Task entity exists. Never blocks stock checks. */
-function startMoodInBackground(cfg: Config, notifiers: ReturnType<typeof buildNotifiers>): void {
+function startMoodInBackground(
+  cfg: Config,
+  notifiers: ReturnType<typeof buildNotifiers>,
+  inDailySummary: boolean,
+  onStarted: (m: ReturnType<typeof startMood> & { ctx: MoodCtx }) => void,
+): void {
   const token = process.env.SUPERVISOR_TOKEN;
   const entity = cfg.mood.aiTaskEntity;
   const check = async (): Promise<ReadyCheck> => {
@@ -165,14 +191,16 @@ function startMoodInBackground(cfg: Config, notifiers: ReturnType<typeof buildNo
     alert: (title, detail) => sendAll(notifiers, formatStatus(title, detail)),
     start: () => {
       console.log(`Mood tracking on: r/${cfg.mood.subreddits.join(", r/") || "(none)"}${cfg.mood.newsQuery ? ` and news for "${cfg.mood.newsQuery}"` : ""}, Reddit via ${cfg.mood.redditClientId ? "login" : "public feed"}, digest at ${cfg.mood.digestTime}.`);
-      startMood({
+      const moodCtx: MoodCtx = {
         cfg: cfg.mood,
         statePath: cfg.moodStatePath,
         notifiers,
         collect,
         ai: (body) => callAiTask(body, { token: token! }),
         sensor: (s, now, sources) => updateMoodSensor(s, now, sources, { token }),
-      });
+      };
+      // In daily_summary mode mood goes into the combined daily message instead of its own digest.
+      onStarted({ ...startMood(moodCtx, { digest: !inDailySummary }), ctx: moodCtx });
     },
   }).catch((error) => console.error(`Mood: startup failed: ${message(error)}`));
 }
