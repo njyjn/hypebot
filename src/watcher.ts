@@ -3,6 +3,7 @@ import { formatReminder, formatSoldOut, formatStatus, formatStockAlert } from ".
 import { HealthTracker, saveHealth, type HealthSummary } from "./health.js";
 import { sendAll } from "./notifiers/index.js";
 import { saveState, type StockState } from "./state.js";
+import { recordAvailability, saveSummary, type SummaryLog } from "./summary.js";
 import type { Availability, Notifier, Source, StoreStock, WatchItem } from "./types.js";
 
 /** One shop and the items watched there. Each shop fails and backs off on its own. */
@@ -24,6 +25,7 @@ export interface Ctx {
   healthSensor?: (group: Group, summary: HealthSummary) => Promise<void>;
   healthStatePath?: string; // where health survives restarts; unset = memory only
   healthSavedAt?: number;
+  summary?: { log: SummaryLog; path: string }; // used in daily_summary mode
 }
 
 const HEALTH_SAVE_EVERY_MS = 5 * 60_000;
@@ -76,9 +78,20 @@ export async function runCheck(ctx: Ctx): Promise<void> {
   if (checkedItems.length === 0) return;
 
   const changes = diffAvailability(checkedItems, ctx.state, now);
-  if (changes.newlyInStock.length > 0) await sendAll(ctx.notifiers, formatStockAlert(changes.newlyInStock));
-  await sendReminders(ctx, checkedItems, now, changes);
-  if (ctx.cfg.notifySoldOut && changes.soldOut.length > 0) await sendAll(ctx.notifiers, formatSoldOut(changes.soldOut));
+  if (ctx.cfg.notifyMode === "daily_summary") {
+    // Stock news waits for the daily message; sensors below still update live.
+    if (ctx.summary && recordAvailability(ctx.summary.log, checkedItems, now, clock)) {
+      try {
+        saveSummary(ctx.summary.path, ctx.summary.log);
+      } catch (error) {
+        console.error(`Saving summary failed: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+  } else {
+    if (changes.newlyInStock.length > 0) await sendAll(ctx.notifiers, formatStockAlert(changes.newlyInStock));
+    await sendReminders(ctx, checkedItems, now, changes);
+    if (ctx.cfg.notifySoldOut && changes.soldOut.length > 0) await sendAll(ctx.notifiers, formatSoldOut(changes.soldOut));
+  }
 
   await ctx.sensors(checkedItems, now);
 

@@ -249,3 +249,21 @@ describe("mood settings", () => {
     expect(yaml).toMatch(/mood_subreddits:\n    - iPhoneDuo/);
   });
 });
+
+describe("notify_mode", () => {
+  it("defaults to instant and reads daily_summary", () => {
+    expect(loadConfig({ OPTIONS_PATH: missing }).notifyMode).toBe("instant");
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ notify_mode: "daily_summary" }) }).notifyMode).toBe("daily_summary");
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ notify_mode: "loud" }) }).notifyMode).toBe("instant");
+  });
+
+  it("is in config.yaml", () => {
+    const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
+    expect(yaml).toContain("notify_mode: instant");
+    expect(yaml).toContain('notify_mode: "list(instant|daily_summary)"');
+  });
+
+  it("puts summary.json next to the state file", () => {
+    expect(loadConfig({ OPTIONS_PATH: missing }).summaryStatePath).toBe("/data/summary.json");
+  });
+});

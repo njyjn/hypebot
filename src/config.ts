@@ -5,6 +5,7 @@ import type { MoodConfig } from "./mood/types.js";
 import type { WatchConfig } from "./types.js";
 
 export type HaNotifyPriority = "normal" | "time_sensitive" | "critical";
+export type NotifyMode = "instant" | "daily_summary";
 const PRIORITIES: HaNotifyPriority[] = ["normal", "time_sensitive", "critical"];
 
 export interface Config {
@@ -16,6 +17,7 @@ export interface Config {
   haNotifyPriority: HaNotifyPriority; // how loudly stock alerts arrive on phones
   remindEveryMinutes: number; // 0 = off; otherwise re-alert while still in stock
   sendTestAlert: boolean;
+  notifyMode: NotifyMode; // daily_summary: stock and delivery news wait for the daily message
   haNotifyService: string;
   slackBotToken: string;
   slackChannel: string;
@@ -27,6 +29,7 @@ export interface Config {
   healthStatePath: string;
   mood: MoodConfig;
   moodStatePath: string;
+  summaryStatePath: string;
   /** Problems worth logging at startup. Never contains secret values. */
   warnings: string[];
 }
@@ -99,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     haNotifyPriority: (PRIORITIES as string[]).includes(str("ha_notify_priority")) ? (str("ha_notify_priority") as HaNotifyPriority) : "time_sensitive",
     remindEveryMinutes: Math.min(60, Math.max(0, Math.round(Number(pick("remind_every_minutes")) || 0))),
     sendTestAlert: bool("send_test_alert"),
+    notifyMode: str("notify_mode") === "daily_summary" ? "daily_summary" : "instant",
     haNotifyService: str("ha_notify_service"),
     slackBotToken: str("slack_bot_token"),
     slackChannel: str("slack_channel"),
@@ -110,6 +114,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     healthStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "health.json"),
     mood: moodConfig(raw, pick, str, bool, warnings),
     moodStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "mood.json"),
+    summaryStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "summary.json"),
     warnings,
   };
 
