@@ -93,12 +93,27 @@ describe("runDeliveryCheck", () => {
         return next;
       },
     };
-    const run = (dates: Map<string, DeliveryDate> | Error) => {
+    const logged: unknown[] = [];
+    const run = (dates: Map<string, DeliveryDate> | Error, summaryMode = false) => {
       next = dates;
-      return runDeliveryCheck({ groups: [{ source, items: [nightSky] }], notifiers: [{ name: "fake", send: async (m) => void sent.push(m) }], statePath, sensor });
+      return runDeliveryCheck({
+        groups: [{ source, items: [nightSky] }],
+        notifiers: [{ name: "fake", send: async (m) => void sent.push(m) }],
+        statePath,
+        sensor,
+        ...(summaryMode ? { onEarlier: (changes) => void logged.push(...changes) } : {}),
+      });
     };
-    return { statePath, sent, sensor, run };
+    return { statePath, sent, sensor, run, logged };
   }
+
+  it("in daily_summary mode hands earlier dates to the summary instead of alerting", async () => {
+    const s = setup();
+    await s.run(new Map([[nightSky.id, { date: "2027-01-25", label: "Mon 25/01/2027" }]]), true);
+    await s.run(new Map([[nightSky.id, { date: "2027-01-18", label: "Mon 18/01/2027" }]]), true);
+    expect(s.sent).toEqual([]);
+    expect(s.logged).toHaveLength(1);
+  });
 
   it("remembers dates, alerts when one moves earlier, and publishes the sensor", async () => {
     const s = setup();

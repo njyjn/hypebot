@@ -53,6 +53,8 @@ export interface DeliveryCtx {
   notifiers: Notifier[];
   statePath: string;
   sensor?: (source: Source, items: WatchItem[], dates: Map<string, DeliveryDate>) => Promise<void>;
+  /** daily_summary mode: receives earlier dates instead of an alert being sent. */
+  onEarlier?: (changes: DeliveryChange[]) => void;
 }
 
 /** Check online delivery dates for every shop that offers them; alert when one moves earlier. */
@@ -69,7 +71,10 @@ export async function runDeliveryCheck(ctx: DeliveryCtx): Promise<void> {
       continue;
     }
     const earlier = diffDelivery(items, state, dates);
-    if (earlier.length > 0) await sendAll(ctx.notifiers, formatDeliveryAlert(earlier));
+    if (earlier.length > 0) {
+      if (ctx.onEarlier) ctx.onEarlier(earlier);
+      else await sendAll(ctx.notifiers, formatDeliveryAlert(earlier));
+    }
     for (const [id, d] of dates) state[id] = d;
     changed = true;
     await ctx.sensor?.(source, items, dates);

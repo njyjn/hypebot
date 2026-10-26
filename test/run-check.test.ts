@@ -5,14 +5,15 @@ import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config.js";
 import { loadState } from "../src/state.js";
 import { FailureTracker, runCheck, type Ctx } from "../src/watcher.js";
+import { emptySummary, loadSummary } from "../src/summary.js";
 import type { AlertMessage, Availability, Source } from "../src/types.js";
 import { duoItem } from "./helpers.js";
 
 const item = duoItem("MK2G4X/A", "Night Sky 512GB");
 
-function ctx(results: (Availability[] | Error)[], opts: { notifySoldOut?: boolean } = {}) {
+function ctx(results: (Availability[] | Error)[], opts: { notifySoldOut?: boolean; notifyMode?: "instant" | "daily_summary" } = {}) {
   const statePath = join(mkdtempSync(join(tmpdir(), "hb-")), "state.json");
-  const cfg = { ...loadConfig({ OPTIONS_PATH: "/nonexistent" }), statePath, notifySoldOut: opts.notifySoldOut ?? false };
+  const cfg = { ...loadConfig({ OPTIONS_PATH: "/nonexistent" }), statePath, notifySoldOut: opts.notifySoldOut ?? false, remindEveryMinutes: 1, notifyMode: opts.notifyMode ?? "instant" };
   const sent: AlertMessage[] = [];
   const sensors = vi.fn(async () => {});
   const source: Source = {
@@ -31,6 +32,7 @@ function ctx(results: (Availability[] | Error)[], opts: { notifySoldOut?: boolea
     notifiers: [{ name: "fake", send: async (m) => void sent.push(m) }],
     state: {},
     sensors,
+    summary: { log: emptySummary(), path: join(statePath, "..", "summary.json") },
   };
   return { c, sent, sensors, statePath };
 }
@@ -214,3 +216,28 @@ describe("health persistence in runCheck", () => {
   });
 });
 
+
+describe("runCheck in daily_summary mode", () => {
+  it("logs drops instead of alerting, and sends no reminders or sold-out notes", async () => {
+    const { c, sent, sensors, statePath } = ctx([inStock, inStock, none], { notifyMode: "daily_summary", notifySoldOut: true });
+    let clock = Date.parse("2026-10-26T13:53:37Z");
+    c.now = () => clock;
+    await runCheck(c);
+    clock += 2 * 60_000; // past remind_every_minutes
+    await runCheck(c);
+    clock += 90_000;
+    await runCheck(c);
+    expect(sent).toEqual([]);
+    expect(sensors).toHaveBeenCalledTimes(3); // data collection carries on
+    const saved = loadSummary(join(statePath, "..", "summary.json"));
+    expect(saved.drops).toEqual([{ itemId: item.id, label: "Night Sky 512GB", store: "Orchard Road", start: Date.parse("2026-10-26T13:53:37Z"), end: clock }]);
+  });
+
+  it("still sends the can't-reach alert instantly", async () => {
+    const { c, sent } = ctx(Array(10).fill(new Error("HTTP 541")), { notifyMode: "daily_summary" });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (let i = 0; i < 10; i++) await runCheck(c);
+    err.mockRestore();
+    expect(sent.map((m) => m.title)).toContain("⚠️ HypeBot can't reach Apple SG");
+  });
+});

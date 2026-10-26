@@ -1,5 +1,5 @@
 name: "HypeBot"
-version: "0.6.0"
+version: "0.7.0"
 slug: "hypebot"
 description: "Alerts when hard-to-find products are in stock for store pickup"
 url: "https://github.com/njyjn/hypebot"
@@ -25,6 +25,7 @@ options:
   send_test_alert: false
   ha_notify_service: ""
   ha_notify_priority: time_sensitive
+  notify_mode: instant
   slack_bot_token: ""
   slack_channel: ""
   telegram_bot_token: ""
@@ -56,6 +57,7 @@ schema:
   send_test_alert: "bool"
   ha_notify_service: "str?"
   ha_notify_priority: "list(normal|time_sensitive|critical)"
+  notify_mode: "list(instant|daily_summary)"
   slack_bot_token: "password?"
   slack_channel: "str?"
   telegram_bot_token: "password?"
