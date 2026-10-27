@@ -34,6 +34,8 @@ export interface Config {
   mood: MoodConfig;
   moodStatePath: string;
   summaryStatePath: string;
+  schedulePath: string;
+  modelCachePath: string;
   /** Problems worth logging at startup. Never contains secret values. */
   warnings: string[];
 }
@@ -129,6 +131,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mood: moodConfig(raw, pick, str, bool, warnings),
     moodStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "mood.json"),
     summaryStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "summary.json"),
+    schedulePath: join(dirname(env.STATE_PATH || "/data/state.json"), "schedule.json"),
+    modelCachePath: join(dirname(env.STATE_PATH || "/data/state.json"), "models.json"),
     warnings,
   };
 

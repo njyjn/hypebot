@@ -4,6 +4,7 @@ import { HealthTracker, saveHealth, type HealthSummary } from "./health.js";
 import { sendAll } from "./notifiers/index.js";
 import { saveState, type StockState } from "./state.js";
 import { recordAvailability, saveSummary, type SummaryLog } from "./summary.js";
+import { cooldownLeftMs, saveSchedule, type Schedule } from "./schedule.js";
 import type { Availability, Notifier, Source, StoreStock, WatchItem } from "./types.js";
 
 /** One shop and the items watched there. Each shop fails and backs off on its own. */
@@ -26,6 +27,19 @@ export interface Ctx {
   healthStatePath?: string; // where health survives restarts; unset = memory only
   healthSavedAt?: number;
   summary?: { log: SummaryLog; path: string }; // used in daily_summary mode
+  schedule?: { data: Schedule; path: string }; // check times and cool-downs that survive restarts
+}
+
+const COOLDOWN_MS = 30 * 60_000; // after Apple's 541 "too many requests"
+const BLIND_AFTER_MS = 30 * 60_000; // no successful check for this long -> alert
+
+function saveScheduleNow(ctx: Ctx): void {
+  if (!ctx.schedule) return;
+  try {
+    saveSchedule(ctx.schedule.path, ctx.schedule.data);
+  } catch (error) {
+    console.error(`Saving schedule failed: ${error instanceof Error ? error.message : error}`);
+  }
 }
 
 const HEALTH_SAVE_EVERY_MS = 5 * 60_000;
@@ -48,10 +62,18 @@ export async function runCheck(ctx: Ctx): Promise<void> {
   const now: Availability[] = [];
   const failed = new Set<Group>();
 
+  const sched = ctx.schedule?.data;
+  let attempted = false;
   for (const group of ctx.groups) {
     const label = group.source.label;
     const health = (group.health ??= new HealthTracker());
     const clock = (ctx.now ?? Date.now)();
+    // Cooling down after a 541: don't ask Apple at all; the shop keeps its last known state.
+    if (sched && cooldownLeftMs(sched, group.source.name, clock) > 0) {
+      failed.add(group);
+      continue;
+    }
+    attempted = true;
     try {
       now.push(...(await group.source.check(group.items)));
       checkedItems.push(...group.items);
@@ -61,19 +83,43 @@ export async function runCheck(ctx: Ctx): Promise<void> {
       const reason = error instanceof Error ? error.message : String(error);
       console.error(`${label} check failed: ${reason}`);
       health.record(false, clock, reason);
-      if (group.failures.fail() === "alert") {
-        await sendAll(ctx.notifiers, formatStatus(`⚠️ HypeBot can't reach ${label}`, `Last ${group.failures.threshold} checks failed. Latest error: ${reason}`));
+      group.failures.fail(clock);
+      if (sched && /\bHTTP 541\b/.test(reason)) {
+        (sched.cooldownUntil ??= {})[group.source.name] = clock + COOLDOWN_MS;
+        console.warn(`${label} is limiting requests (HTTP 541); pausing checks for 30 minutes.`);
+      }
+      // Blind = no successful check for 30 minutes, counted from the first failure since the last success
+      // (saved, so restarting during a block doesn't restart the count).
+      const since = sched ? ((sched.failingSince ??= {})[group.source.name] ??= clock) : (group.failures.failingSince ?? clock);
+      const alerted = sched ? sched.blindAlerted?.[group.source.name] === true : group.failures.alerted;
+      if (!alerted && clock - since >= BLIND_AFTER_MS) {
+        if (sched) (sched.blindAlerted ??= {})[group.source.name] = true;
+        group.failures.alerted = true;
+        await sendAll(
+          ctx.notifiers,
+          formatStatus(`⚠️ HypeBot is blind: ${label} has refused every check for 30 minutes`, `Latest error: ${reason}. HypeBot keeps trying and will say when it's back.`),
+        );
       }
       await reportHealth(ctx, group, clock);
       continue;
     }
-    if (group.failures.succeed() === "recovered") {
+    const wasBlind = sched ? sched.blindAlerted?.[group.source.name] === true : group.failures.alerted;
+    group.failures.succeed();
+    if (sched?.cooldownUntil) delete sched.cooldownUntil[group.source.name];
+    if (sched?.failingSince) delete sched.failingSince[group.source.name];
+    if (wasBlind) {
+      if (sched?.blindAlerted) delete sched.blindAlerted[group.source.name];
+      group.failures.alerted = false;
       await sendAll(ctx.notifiers, formatStatus("✅ HypeBot is back to normal", `Checking ${label} stock again.`));
     }
     await reportHealth(ctx, group, clock);
   }
   // Saved at most every 5 minutes to spare the SD card; a crash loses at most that.
   const clock = (ctx.now ?? Date.now)();
+  if (sched && attempted) {
+    sched.lastStockCheckAt = clock;
+    saveScheduleNow(ctx);
+  }
   if (ctx.healthSavedAt === undefined || clock - ctx.healthSavedAt >= HEALTH_SAVE_EVERY_MS) saveHealthNow(ctx, clock);
   if (checkedItems.length === 0) return;
 
@@ -139,35 +185,29 @@ export function diffAvailability(items: WatchItem[], prev: StockState, now: Avai
 const MAX_BACKOFF_MS = 600_000;
 
 /**
- * Counts consecutive failed checks: decides when to raise (and clear) the
- * "can't reach the shop" alert, and how long to back off so a rate-limit
- * block is not kept alive by retrying every minute.
+ * Counts consecutive failed checks, so HypeBot backs off instead of keeping a
+ * rate-limit block alive by retrying every minute.
  */
 export class FailureTracker {
   private count = 0;
+  /** When this run of failures started. */
+  failingSince?: number;
+  /** "HypeBot is blind" sent (used when there is no saved schedule). */
+  alerted = false;
 
   /** Failed checks in a row right now. */
   get inARow(): number {
     return this.count;
   }
-  private alerted = false;
 
-  constructor(readonly threshold = 10) {}
-
-  fail(): "alert" | null {
+  fail(at = Date.now()): void {
+    if (this.count === 0) this.failingSince = at;
     this.count++;
-    if (this.count === this.threshold) {
-      this.alerted = true;
-      return "alert";
-    }
-    return null;
   }
 
-  succeed(): "recovered" | null {
+  succeed(): void {
     this.count = 0;
-    if (!this.alerted) return null;
-    this.alerted = false;
-    return "recovered";
+    this.failingSince = undefined;
   }
 
   delayMs(baseMs: number): number {

@@ -78,7 +78,7 @@ describe("updateHealthSensor", () => {
       "apple_sg",
       "Apple SG",
       { state: "degraded", checks: 10, failures: 5, failureRate: 0.5, lastError: "Apple SG returned HTTP 541", lastSuccess: Date.parse("2026-10-24T05:00:00Z") },
-      { token: "sup", apiBase: s.base, waitSeconds: 120 },
+      { token: "sup", apiBase: s.base, waitSeconds: 120, coolingDownUntil: Date.parse("2026-10-27T06:30:00Z") },
     );
     expect(s.requests[0].url).toBe("/states/sensor.hypebot_apple_sg_health");
     expect(s.requests[0].body).toEqual({
@@ -92,6 +92,7 @@ describe("updateHealthSensor", () => {
         last_error: "Apple SG returned HTTP 541",
         last_success: "2026-10-24T05:00:00.000Z",
         wait_seconds: 120,
+        cooling_down_until: "2026-10-27T06:30:00.000Z",
       },
     });
   });

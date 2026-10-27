@@ -6,6 +6,7 @@ import { loadConfig } from "../src/config.js";
 import { loadState } from "../src/state.js";
 import { FailureTracker, runCheck, type Ctx } from "../src/watcher.js";
 import { emptySummary, loadSummary } from "../src/summary.js";
+import { loadSchedule } from "../src/schedule.js";
 import type { AlertMessage, Availability, Source } from "../src/types.js";
 import { duoItem } from "./helpers.js";
 
@@ -33,6 +34,7 @@ function ctx(results: (Availability[] | Error)[], opts: { notifySoldOut?: boolea
     state: {},
     sensors,
     summary: { log: emptySummary(), path: join(statePath, "..", "summary.json") },
+    schedule: { data: {}, path: join(statePath, "..", "schedule.json") },
   };
   return { c, sent, sensors, statePath };
 }
@@ -67,18 +69,59 @@ describe("runCheck", () => {
     expect(loadState(statePath)).toEqual({});
   });
 
-  it("alerts once after 10 failures in a row and once on recovery", async () => {
-    const { c, sent } = ctx([...Array.from({ length: 11 }, () => new Error("HTTP 541")), none]);
+  it("alerts once when no check has worked for 30 minutes, and once on recovery", async () => {
+    const { c, sent } = ctx([...Array.from({ length: 8 }, () => new Error("timeout")), none]);
+    let clock = Date.parse("2026-10-27T06:00:00Z");
+    c.now = () => clock;
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    for (let i = 0; i < 12; i++) await runCheck(c);
+    for (let i = 0; i < 8; i++) {
+      await runCheck(c);
+      clock += 5 * 60_000; // 0, 5, ... 35 minutes of failures
+    }
+    await runCheck(c);
     err.mockRestore();
-    // The share-of-failures warning fires first (5th failure), then the full-block alert (10th).
-    expect(sent.map((m) => m.title)).toEqual([
-      "⚠️ Apple SG is refusing some checks",
-      "⚠️ HypeBot can't reach Apple SG",
-      "✅ HypeBot is back to normal",
-    ]);
-    expect(sent[1].lines[0]).toContain("HTTP 541");
+    const titles = sent.map((m) => m.title);
+    expect(titles.filter((t) => t.startsWith("⚠️ HypeBot is blind"))).toHaveLength(1);
+    expect(titles.at(-1)).toBe("✅ HypeBot is back to normal");
+    const blind = sent.find((m) => m.title.startsWith("⚠️ HypeBot is blind"))!;
+    expect(blind.title).toBe("⚠️ HypeBot is blind: Apple SG has refused every check for 30 minutes");
+    expect(blind.lines[0]).toContain("timeout");
+  });
+
+  it("keeps counting the 30 minutes across a restart", async () => {
+    const first = ctx([new Error("timeout")]);
+    let clock = Date.parse("2026-10-27T06:00:00Z");
+    first.c.now = () => clock;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCheck(first.c);
+
+    const second = ctx([new Error("timeout")]);
+    second.c.schedule = first.c.schedule; // new process, same saved schedule
+    clock += 31 * 60_000;
+    second.c.now = () => clock;
+    await runCheck(second.c);
+    err.mockRestore();
+    expect(second.sent.map((m) => m.title)).toContain("⚠️ HypeBot is blind: Apple SG has refused every check for 30 minutes");
+  });
+
+  it("does not re-send the blind alert after a restart", async () => {
+    const first = ctx([new Error("timeout"), new Error("timeout")]);
+    let clock = Date.parse("2026-10-27T06:00:00Z");
+    first.c.now = () => clock;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCheck(first.c);
+    clock += 31 * 60_000;
+    await runCheck(first.c);
+    expect(first.sent.filter((m) => m.title.startsWith("⚠️ HypeBot is blind"))).toHaveLength(1);
+
+    // Same schedule and health, new process.
+    const second = ctx([new Error("timeout")]);
+    second.c.now = () => clock + 5 * 60_000;
+    second.c.schedule = first.c.schedule;
+    second.c.groups[0].health = first.c.groups[0].health;
+    await runCheck(second.c);
+    err.mockRestore();
+    expect(second.sent.filter((m) => m.title.startsWith("⚠️ HypeBot is blind"))).toHaveLength(0);
   });
 
   it("stays quiet on a sell-out unless notify_sold_out is on", async () => {
@@ -106,7 +149,7 @@ describe("runCheck with several shops", () => {
       cfg,
       groups: [
         { source: ok, items: [item], failures: new FailureTracker() },
-        { source: broken, items: [other], failures: new FailureTracker(1) },
+        { source: broken, items: [other], failures: new FailureTracker() },
       ],
       notifiers: [{ name: "fake", send: async (m) => void sent.push(m) }],
       state: { [other.id]: ["Somewhere"] },
@@ -115,7 +158,7 @@ describe("runCheck with several shops", () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await runCheck(c);
     err.mockRestore();
-    expect(sent.map((m) => m.title)).toEqual(["⚠️ HypeBot can't reach Other Shop", "🟢 iPhone Duo in stock (Apple SG)"]);
+    expect(sent.map((m) => m.title)).toEqual(["🟢 iPhone Duo in stock (Apple SG)"]);
     expect(loadState(statePath)).toEqual({ [item.id]: ["Orchard Road"], [other.id]: ["Somewhere"] });
   });
 });
@@ -177,7 +220,7 @@ describe("health reporting", () => {
 
   it("alerts once when Apple refuses a large share of checks, and once when it clears", async () => {
     const results: (Availability[] | Error)[] = [];
-    for (let i = 0; i < 10; i++) results.push(i % 2 === 0 ? none : new Error("Apple SG returned HTTP 541"));
+    for (let i = 0; i < 10; i++) results.push(i % 2 === 0 ? none : new Error("Apple SG did not return stock data (got a web page instead)"));
     for (let i = 0; i < 70; i++) results.push(none);
     const { c, sent } = ctx(results);
     let clock = 0;
@@ -196,7 +239,7 @@ describe("health reporting", () => {
 describe("health persistence in runCheck", () => {
   it("saves health at most every 5 minutes, including after failed checks", async () => {
     const { loadHealth } = await import("../src/health.js");
-    const { c } = ctx([new Error("Apple SG returned HTTP 541"), none, none]);
+    const { c } = ctx([new Error("Apple SG did not return stock data (got a web page instead)"), none, none]);
     const healthPath = join(mkdtempSync(join(tmpdir(), "hb-")), "health.json");
     c.healthStatePath = healthPath;
     let clock = 0;
@@ -233,11 +276,52 @@ describe("runCheck in daily_summary mode", () => {
     expect(saved.drops).toEqual([{ itemId: item.id, label: "Night Sky 512GB", store: "Orchard Road", start: Date.parse("2026-10-26T13:53:37Z"), end: clock }]);
   });
 
-  it("still sends the can't-reach alert instantly", async () => {
-    const { c, sent } = ctx(Array(10).fill(new Error("HTTP 541")), { notifyMode: "daily_summary" });
+  it("still sends the blind alert instantly", async () => {
+    const { c, sent } = ctx(Array(3).fill(new Error("timeout")), { notifyMode: "daily_summary" });
+    let clock = 0;
+    c.now = () => clock;
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    for (let i = 0; i < 10; i++) await runCheck(c);
+    for (let i = 0; i < 3; i++) {
+      await runCheck(c);
+      clock += 16 * 60_000;
+    }
     err.mockRestore();
-    expect(sent.map((m) => m.title)).toContain("⚠️ HypeBot can't reach Apple SG");
+    expect(sent.map((m) => m.title)).toContain("⚠️ HypeBot is blind: Apple SG has refused every check for 30 minutes");
+  });
+});
+
+describe("cool-down after Apple's 541", () => {
+  it("pauses that shop for 30 minutes and saves it", async () => {
+    const { c, statePath } = ctx([new Error("Apple SG returned HTTP 541"), inStock]);
+    const check = vi.spyOn(c.groups[0].source, "check");
+    let clock = Date.parse("2026-10-27T06:00:00Z");
+    c.now = () => clock;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCheck(c);
+    expect(loadSchedule(join(statePath, "..", "schedule.json")).cooldownUntil).toEqual({ apple_sg: clock + 30 * 60_000 });
+
+    clock += 10 * 60_000;
+    await runCheck(c); // still cooling down: Apple is not asked
+    expect(check).toHaveBeenCalledTimes(1);
+
+    clock += 21 * 60_000;
+    await runCheck(c);
+    err.mockRestore();
+    expect(check).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the normal backoff for other errors", async () => {
+    const { c } = ctx([new Error("Apple SG did not return stock data (got a web page instead)")]);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCheck(c);
+    err.mockRestore();
+    expect(c.schedule!.data.cooldownUntil ?? {}).toEqual({});
+  });
+
+  it("records when the last stock check ran", async () => {
+    const { c } = ctx([none]);
+    c.now = () => 1_000_000;
+    await runCheck(c);
+    expect(c.schedule!.data.lastStockCheckAt).toBe(1_000_000);
   });
 });

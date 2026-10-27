@@ -105,7 +105,7 @@ phone. Pick the kinds under `telegram_messages`, `slack_messages` and
 | `stock` | 🟢 in stock, 🔁 still in stock, ⚪ sold out |
 | `delivery` | 📦 delivery date moved earlier |
 | `digest` | 📊 daily mood digest or daily summary (in `daily_summary` mode this carries the day's drops) |
-| `status` | ⚠️/✅ problems and recoveries: can't reach Apple, Apple refusing checks, can't find models, mood off |
+| `status` | ⚠️/✅ problems and recoveries: HypeBot is blind, Apple refusing checks, can't find models, mood off |
 | `test` | the startup test alert |
 
 For example, a Telegram channel with `telegram_messages: [stock, delivery]`
@@ -130,7 +130,7 @@ Mood: -0.25 (negative), was +0.10 yesterday · 40 posts
 ```
 
 Durations are as precise as `interval_seconds`. The mood part appears when
-mood tracking is on. Problems ("can't reach Apple SG", Apple refusing
+mood tracking is on. Problems ("HypeBot is blind", Apple refusing
 checks, mood being off) are still sent straight away. The day's events are
 kept in `/data/summary.json`, so a restart doesn't lose them; a message
 missed while the app was off is skipped, not sent late.
@@ -197,6 +197,18 @@ stores tend to get bigger batches for pickup.
 The last hour of checks is kept in `/data/health.json` (saved every 5 minutes
 and when the app stops), so restarts don't reset these numbers.
 
+- `cooling_down_until`: set while HypeBot is pausing after Apple's HTTP 541
+  ("too many requests"). A 541 pauses stock and delivery checks for 30
+  minutes instead of retrying every few minutes, and the pause survives
+  restarts.
+
+If no check has worked for 30 minutes you get one "⚠️ HypeBot is blind"
+alert, and one "✅ back to normal" on the next success.
+
+Restarting HypeBot doesn't add requests to Apple: it reuses the model list
+from the last 6 hours (`/data/models.json`), and waits out the rest of the
+interval since the last check (`/data/schedule.json`) before checking again.
+
 When it leaves `ok` you get one "⚠️ Apple SG is refusing some checks" alert,
 and one "✅ healthy again" when it recovers. If it happens, raise
 `interval_seconds` (e.g. 90) for a while.
@@ -252,9 +264,9 @@ appears, alerting only if it's still missing after 10 minutes. History is kept i
 
 ## When things go wrong
 
-- **Apple refuses or fails a check:** HypeBot logs it, backs off, and keeps
-  going. After 10 failures in a row you get one "can't reach Apple SG" alert,
-  and one "back to normal" when it recovers. Apple occasionally answers a
+- **Apple refuses or fails a check:** HypeBot logs it, backs off (30 minutes
+  after a 541), and keeps going. After 30 minutes without a working check you
+  get one "HypeBot is blind" alert, and one "back to normal" when it recovers. Apple occasionally answers a
   scripted request with its "Page Not Found" page; that counts as a failed
   check, not "out of stock".
 - **An alert destination fails:** logged; the others still get the message.

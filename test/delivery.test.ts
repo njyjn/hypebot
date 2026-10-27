@@ -104,8 +104,18 @@ describe("runDeliveryCheck", () => {
         ...(summaryMode ? { onEarlier: (changes) => void logged.push(...changes) } : {}),
       });
     };
-    return { statePath, sent, sensor, run, logged };
+    const runWith = (dates: Map<string, DeliveryDate>, extra: { skip?: (source: Source) => boolean }) => {
+      next = dates;
+      return runDeliveryCheck({ groups: [{ source, items: [nightSky] }], notifiers: [], statePath, sensor, ...extra });
+    };
+    return { statePath, sent, sensor, run, logged, runWith };
   }
+
+  it("skips shops that are cooling down", async () => {
+    const s = setup();
+    await s.runWith(new Map([[nightSky.id, { date: "2027-01-25", label: "Mon 25/01/2027" }]]), { skip: () => true });
+    expect(s.sensor).not.toHaveBeenCalled();
+  });
 
   it("in daily_summary mode hands earlier dates to the summary instead of alerting", async () => {
     const s = setup();
