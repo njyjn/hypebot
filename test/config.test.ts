@@ -332,3 +332,11 @@ describe("message routing settings", () => {
     }
   });
 });
+
+describe("restart state files", () => {
+  it("live next to the state file", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: missing });
+    expect(cfg.schedulePath).toBe("/data/schedule.json");
+    expect(cfg.modelCachePath).toBe("/data/models.json");
+  });
+});

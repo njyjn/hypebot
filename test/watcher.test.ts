@@ -73,20 +73,15 @@ describe("state file", () => {
 });
 
 describe("FailureTracker", () => {
-  it("alerts once, on the 10th consecutive failure", () => {
+  it("remembers when the current run of failures started", () => {
     const f = new FailureTracker();
-    for (let i = 0; i < 9; i++) expect(f.fail()).toBeNull();
-    expect(f.fail()).toBe("alert");
-    expect(f.fail()).toBeNull();
-  });
-
-  it("reports recovery only after an alert was sent", () => {
-    const f = new FailureTracker();
-    f.fail();
-    expect(f.succeed()).toBeNull();
-    for (let i = 0; i < 10; i++) f.fail();
-    expect(f.succeed()).toBe("recovered");
-    expect(f.succeed()).toBeNull();
+    f.fail(1000);
+    f.fail(2000);
+    expect(f.inARow).toBe(2);
+    expect(f.failingSince).toBe(1000);
+    f.succeed();
+    expect(f.inARow).toBe(0);
+    expect(f.failingSince).toBeUndefined();
   });
 
   it("doubles the wait after each failure up to 10 minutes, and resets on success", () => {

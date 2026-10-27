@@ -56,6 +56,8 @@ export interface DeliveryCtx {
   sensor?: (source: Source, items: WatchItem[], dates: Map<string, DeliveryDate>) => Promise<void>;
   /** daily_summary mode: receives earlier dates instead of an alert being sent. */
   onEarlier?: (changes: DeliveryChange[]) => void;
+  /** Shops not to ask right now (cooling down after Apple's 541). */
+  skip?: (source: Source) => boolean;
 }
 
 /** Check online delivery dates for every shop that offers them; alert when one moves earlier. */
@@ -63,7 +65,7 @@ export async function runDeliveryCheck(ctx: DeliveryCtx): Promise<void> {
   const state = loadDeliveryState(ctx.statePath);
   let changed = false;
   for (const { source, items } of ctx.groups) {
-    if (!source.deliveryDates) continue;
+    if (!source.deliveryDates || ctx.skip?.(source)) continue;
     let dates: Map<string, DeliveryDate>;
     try {
       dates = await source.deliveryDates(items);

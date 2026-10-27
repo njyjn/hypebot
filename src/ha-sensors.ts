@@ -52,7 +52,7 @@ export async function updateHealthSensor(
   sourceName: string,
   label: string,
   s: HealthSummary,
-  opts: { token?: string; apiBase?: string; waitSeconds: number },
+  opts: { token?: string; apiBase?: string; waitSeconds: number; coolingDownUntil?: number },
 ): Promise<void> {
   if (!opts.token) return;
   const id = `sensor.hypebot_${slug(sourceName)}_health`;
@@ -70,6 +70,7 @@ export async function updateHealthSensor(
           last_error: s.lastError ?? "",
           last_success: s.lastSuccess === undefined ? "" : new Date(s.lastSuccess).toISOString(),
           wait_seconds: opts.waitSeconds,
+          cooling_down_until: opts.coolingDownUntil ? new Date(opts.coolingDownUntil).toISOString() : "",
         },
       },
       { Authorization: `Bearer ${opts.token}` },

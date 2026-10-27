@@ -7,6 +7,8 @@ import { createAppleSg } from "./sources/apple-sg.js";
 import { loadState } from "./state.js";
 import type { Source, WatchConfig, WatchItem } from "./types.js";
 import { loadHealth } from "./health.js";
+import { loadModelCache, pickCachedModels, saveModelCache } from "./model-cache.js";
+import { cooldownLeftMs, firstCheckDelayMs, loadSchedule, saveSchedule } from "./schedule.js";
 import { callAiTask } from "./mood/analyse.js";
 import { startMood, type MoodCtx } from "./mood/index.js";
 import { startDaily } from "./daily.js";
@@ -78,20 +80,35 @@ async function main() {
   // Resolve names to part numbers, one group per shop.
   const groups: Group[] = [];
   const savedHealth = loadHealth(cfg.healthStatePath);
+  const modelCache = loadModelCache(cfg.modelCachePath);
+  let resolvedAt = Date.now();
   for (const name of new Set(cfg.watch.map((w) => w.source))) {
     const source = SOURCES[name](cfg);
     const entries = cfg.watch.filter((w) => w.source === name);
-    const items = await resolveWithRetry(source, entries, args.has("--once"), (error) =>
-      sendAll(notifiers, formatStatus("⚠️ HypeBot can't find your models", message(error))),
-    );
+    // A restart reuses the model list from the last few hours instead of re-reading Apple's buy page.
+    const cached = args.has("--once") ? undefined : pickCachedModels(modelCache, name, entries, Date.now());
+    const items =
+      cached?.items ??
+      (await resolveWithRetry(source, entries, args.has("--once"), (error) =>
+        sendAll(notifiers, formatStatus("⚠️ HypeBot can't find your models", message(error))),
+      ));
     if (!items) {
       process.exitCode = 1;
       return;
     }
-    console.log(`Watching at ${source.label}: ${items.map((i) => `${i.productName} ${i.variantName} (${i.partNumber})`).join("; ")}`);
+    if (cached) resolvedAt = Math.min(resolvedAt, cached.at);
+    else modelCache[name] = { entries, items, at: Date.now() };
+    console.log(`Watching at ${source.label}${cached ? " (saved model list)" : ""}: ${items.map((i) => `${i.productName} ${i.variantName} (${i.partNumber})`).join("; ")}`);
     groups.push({ source, items, failures: new FailureTracker(), health: savedHealth[source.name] });
   }
-  let resolvedAt = Date.now();
+  const saveModels = () => {
+    try {
+      saveModelCache(cfg.modelCachePath, modelCache);
+    } catch (error) {
+      console.error(`Saving model list failed: ${message(error)}`);
+    }
+  };
+  saveModels();
 
   if (args.has("--once")) {
     for (const { source, items } of groups) {
@@ -108,17 +125,23 @@ async function main() {
     return;
   }
 
+  const schedule = { data: loadSchedule(cfg.schedulePath), path: cfg.schedulePath };
+  const intervalMs = cfg.intervalSeconds * 1000;
+  // Time until a shop may be asked again: the backoff after failures, or a 541 cool-down.
+  const waitMs = (g: Group) => Math.max(g.failures.delayMs(intervalMs), cooldownLeftMs(schedule.data, g.source.name, Date.now()));
   const ctx: Ctx = {
     cfg,
     groups,
     notifiers,
     state: loadState(cfg.statePath),
     healthStatePath: cfg.healthStatePath,
+    schedule,
     sensors: (its, now) => updateSensors(its, now, { token: process.env.SUPERVISOR_TOKEN, checkedAt: new Date() }),
     healthSensor: (g, s) =>
       updateHealthSensor(g.source.name, g.source.label, s, {
         token: process.env.SUPERVISOR_TOKEN,
-        waitSeconds: Math.round(g.failures.delayMs(cfg.intervalSeconds * 1000) / 1000),
+        waitSeconds: Math.round(waitMs(g) / 1000),
+        coolingDownUntil: schedule.data.cooldownUntil?.[g.source.name],
       }),
   };
 
@@ -132,13 +155,20 @@ async function main() {
     console.log(`Notifications: daily summary at ${cfg.mood.digestTime}; problems are still sent straight away.`);
   }
 
-  let deliveryCheckedAt = 0;
+  // A quick restart waits out the rest of the interval (and any cool-down) instead of asking Apple again at once.
+  const firstWait = firstCheckDelayMs(schedule.data, Date.now(), intervalMs);
+  if (firstWait > 0) {
+    console.log(`First stock check in ${Math.round(firstWait / 1000)}s (last check was recent, or Apple asked HypeBot to slow down).`);
+    await sleep(firstWait);
+  }
+
   for (;;) {
-    if (cfg.trackDeliveryDates && Date.now() - deliveryCheckedAt >= DELIVERY_EVERY_MS) {
+    if (cfg.trackDeliveryDates && Date.now() - (schedule.data.deliveryCheckedAt ?? 0) >= DELIVERY_EVERY_MS) {
       await runDeliveryCheck({
         groups: ctx.groups,
         notifiers,
         statePath: cfg.deliveryStatePath,
+        skip: (source) => cooldownLeftMs(schedule.data, source.name, Date.now()) > 0,
         sensor: (source, items, dates) => updateDeliverySensor(source.name, source.label, items, dates, { token: process.env.SUPERVISOR_TOKEN }),
         ...(ctx.summary
           ? {
@@ -153,12 +183,20 @@ async function main() {
             }
           : {}),
       });
-      deliveryCheckedAt = Date.now();
+      schedule.data.deliveryCheckedAt = Date.now();
+      try {
+        saveSchedule(schedule.path, schedule.data);
+      } catch (error) {
+        console.error(`Saving schedule failed: ${message(error)}`);
+      }
     }
     if (Date.now() - resolvedAt > RESOLVE_EVERY_MS) {
       for (const group of ctx.groups) {
         try {
-          group.items = await group.source.resolve(cfg.watch.filter((w) => w.source === group.source.name));
+          const entries = cfg.watch.filter((w) => w.source === group.source.name);
+          group.items = await group.source.resolve(entries);
+          modelCache[group.source.name] = { entries, items: group.items, at: Date.now() };
+          saveModels();
         } catch (error) {
           console.warn(`Re-checking ${group.source.label} model list failed, keeping the current one: ${message(error)}`);
         }
@@ -167,7 +205,9 @@ async function main() {
     }
     await runCheck(ctx);
     // Back off when any shop is failing; one shared loop keeps requests spread out.
-    const delay = Math.max(...ctx.groups.map((g) => g.failures.delayMs(cfg.intervalSeconds * 1000)));
+    // Shops cooling down are skipped by runCheck; if all are, wait for the first to be ready.
+    const active = ctx.groups.filter((g) => cooldownLeftMs(schedule.data, g.source.name, Date.now()) === 0);
+    const delay = active.length > 0 ? Math.max(...active.map((g) => g.failures.delayMs(intervalMs))) : Math.min(...ctx.groups.map(waitMs));
     await sleep(delay + Math.random() * JITTER_MS);
   }
 }
