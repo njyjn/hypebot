@@ -8,8 +8,15 @@ export const USER_AGENT =
 let proxy: { url: string; agent: ProxyAgent } | undefined;
 
 export function setProxy(url: string | undefined): void {
-  void proxy?.agent.close();
+  proxy?.agent.close().catch(() => {});
   proxy = url ? { url, agent: new ProxyAgent(url) } : undefined;
+}
+
+/** The deepest error in a `.cause` chain (undici wraps proxy failures two levels down). */
+function rootCause(error: unknown): { code?: unknown; message?: string } | undefined {
+  let e = error as { cause?: unknown } | undefined;
+  while (e && typeof e === "object" && e.cause) e = e.cause as { cause?: unknown };
+  return e as { code?: unknown; message?: string } | undefined;
 }
 
 export async function fetchText(url: string, timeoutMs = 20_000): Promise<{ status: number; body: string }> {
@@ -22,14 +29,23 @@ export async function fetchText(url: string, timeoutMs = 20_000): Promise<{ stat
     return { status: res.status, body: await res.text() };
   }
   const via = proxy;
+  const timedOut = new Error(`timed out after ${timeoutMs / 1000}s via proxy ${via.url}`);
+  let timer: NodeJS.Timeout | undefined;
+  // undici doesn't abort while it is still opening the proxy tunnel, so enforce the timeout here too.
+  const deadline = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(timedOut), timeoutMs)));
   try {
-    const res = await proxiedFetch(url, { ...init, dispatcher: via.agent });
-    return { status: res.status, body: await res.text() };
+    const res = await Promise.race([proxiedFetch(url, { ...init, dispatcher: via.agent }), deadline]);
+    return { status: res.status, body: await Promise.race([res.text(), deadline]) };
   } catch (error) {
-    // A timeout is a timeout; anything else before a response means the proxy (the VPN) is the problem.
-    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) throw error;
-    const cause = (error as { cause?: { code?: unknown; message?: string } }).cause;
-    const why = typeof cause?.code === "string" ? cause.code : (cause?.message ?? (error instanceof Error ? error.message : String(error)));
+    if (error === timedOut) throw error;
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) throw timedOut;
+    // Before any response: the proxy (the VPN app) is the problem, not Apple.
+    const root = rootCause(error);
+    const answered = /Proxy response \((\d+)\)/.exec(root?.message ?? "")?.[1];
+    if (answered) throw new Error(`proxy ${via.url} could not connect (proxy answered ${answered}; is the VPN connected?)`);
+    const why = typeof root?.code === "string" ? root.code : (root?.message ?? (error instanceof Error ? error.message : String(error)));
     throw new Error(`proxy ${via.url} unreachable (${why})`);
+  } finally {
+    clearTimeout(timer);
   }
 }

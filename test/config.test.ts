@@ -348,7 +348,7 @@ describe("proxy_url", () => {
   });
 
   it("ignores other schemes and garbage with a warning", () => {
-    for (const bad of ["socks5://x:1080", "not a url"]) {
+    for (const bad of ["socks5://x:1080", "not a url", "http://abcd-proton-proxy"]) {
       const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ proxy_url: bad }) });
       expect(cfg.proxyUrl).toBeUndefined();
       expect(cfg.warnings.join(" ")).toMatch(/proxy_url/);

@@ -112,7 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (rawProxy) {
     try {
       const u = new URL(rawProxy);
-      if (u.protocol !== "http:" || !u.host) throw new Error("not http");
+      if (u.protocol !== "http:" || !u.hostname || !u.port) throw new Error("not http://host:port");
       proxyUrl = `${u.protocol}//${u.host}`;
     } catch {
       warnings.push(`proxy_url must look like http://host:port; ignoring it, so Apple requests go direct`);

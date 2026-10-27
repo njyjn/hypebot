@@ -55,13 +55,24 @@ describe("fetchText with a proxy", () => {
   it("tunnels https with CONNECT, and a refused tunnel names the proxy", async () => {
     const p = await fakeProxy(false);
     setProxy(p.url);
-    await expect(fetchText("https://www.apple.com/sg/shop/x")).rejects.toThrow(/proxy http:\/\/127\.0\.0\.1:\d+ unreachable/);
+    await expect(fetchText("https://www.apple.com/sg/shop/x")).rejects.toThrow(
+      /^proxy http:\/\/127\.0\.0\.1:\d+ could not connect \(proxy answered 502; is the VPN connected\?\)$/,
+    );
     expect(p.seen).toEqual(["CONNECT www.apple.com:443"]);
   });
 
   it("says the proxy is unreachable when nothing listens there", async () => {
     setProxy("http://127.0.0.1:1");
     await expect(fetchText("http://127.0.0.1:2/x")).rejects.toThrow(/proxy http:\/\/127\.0\.0\.1:1 unreachable \(ECONNREFUSED\)/);
+  });
+
+  it("names the proxy when a request through it times out", async () => {
+    const s = createServer();
+    // Accepts the tunnel request but never answers (stalled VPN); drops it later so the test can clean up.
+    s.on("connect", (_req, socket) => void setTimeout(() => socket.destroy(), 1000));
+    const port = await listen(s);
+    setProxy(`http://127.0.0.1:${port}`);
+    await expect(fetchText("https://www.apple.com/sg/shop/x", 300)).rejects.toThrow(/^timed out after 0\.3s via proxy http:\/\/127\.0\.0\.1:\d+$/);
   });
 
   it("goes direct again once the proxy is cleared", async () => {
