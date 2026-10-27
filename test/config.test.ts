@@ -243,7 +243,7 @@ describe("mood settings", () => {
 
   it("config.yaml has every mood option with matching defaults", () => {
     const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
-    for (const line of ["mood_enabled: false", "mood_news_enabled: true", "mood_news_enabled: \"bool\"", "mood_ai_task_entity: ai_task.claude_ai_task", "mood_news_query: \"iPhone Duo\"", "mood_digest_time: \"21:00\"", "reddit_client_secret: \"password?\""]) {
+    for (const line of ["mood_enabled: false", "mood_news_enabled: true", "mood_news_enabled: \"bool?\"", "mood_ai_task_entity: ai_task.claude_ai_task", "mood_news_query: \"iPhone Duo\"", "mood_digest_time: \"21:00\"", "reddit_client_secret: \"password?\""]) {
       expect(yaml).toContain(line);
     }
     expect(yaml).toMatch(/mood_subreddits:\n    - iPhoneDuo/);
@@ -260,10 +260,31 @@ describe("notify_mode", () => {
   it("is in config.yaml", () => {
     const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
     expect(yaml).toContain("notify_mode: instant");
-    expect(yaml).toContain('notify_mode: "list(instant|daily_summary)"');
+    expect(yaml).toContain('notify_mode: "list(instant|daily_summary)?"');
   });
 
   it("puts summary.json next to the state file", () => {
     expect(loadConfig({ OPTIONS_PATH: missing }).summaryStatePath).toBe("/data/summary.json");
+  });
+});
+
+describe("config.yaml schema", () => {
+  // Options added after the first release must be optional: settings saved
+  // before they existed don't have them, and Home Assistant then refuses to save.
+  it("marks every option added after 0.1 as optional", () => {
+    const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
+    const schema = yaml.slice(yaml.indexOf("\nschema:"));
+    for (const key of ["remind_every_minutes", "track_delivery_dates", "ha_notify_priority", "notify_mode", "mood_enabled", "mood_ai_task_entity", "mood_news_enabled", "mood_digest_time"]) {
+      expect(schema).toMatch(new RegExp(`\\n  ${key}: "[^"]*\\?"`));
+    }
+  });
+
+  it("falls back to defaults when those options are missing", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ interval_seconds: 75 }) });
+    expect(cfg.notifyMode).toBe("instant");
+    expect(cfg.haNotifyPriority).toBe("time_sensitive");
+    expect(cfg.trackDeliveryDates).toBe(true);
+    expect(cfg.remindEveryMinutes).toBe(0);
+    expect(cfg.mood).toMatchObject({ enabled: false, aiTaskEntity: "ai_task.claude_ai_task", newsQuery: "iPhone Duo", digestTime: "21:00" });
   });
 });
