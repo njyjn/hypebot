@@ -288,3 +288,47 @@ describe("config.yaml schema", () => {
     expect(cfg.mood).toMatchObject({ enabled: false, aiTaskEntity: "ai_task.claude_ai_task", newsQuery: "iPhone Duo", digestTime: "21:00" });
   });
 });
+
+describe("message routing settings", () => {
+  const ALL = ["stock", "delivery", "digest", "status", "test"];
+
+  it("defaults every destination to every kind", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: missing });
+    expect(cfg.telegramMessages).toEqual(ALL);
+    expect(cfg.slackMessages).toEqual(ALL);
+    expect(cfg.haNotifyMessages).toEqual(ALL);
+  });
+
+  it("treats an empty list as every kind", () => {
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ telegram_messages: [] }) }).telegramMessages).toEqual(ALL);
+  });
+
+  it("reads the lists and drops unknown kinds", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ telegram_messages: ["stock", "delivery", "bogus"] }) });
+    expect(cfg.telegramMessages).toEqual(["stock", "delivery"]);
+  });
+
+  it("warns when a kind reaches no configured destination", () => {
+    const cfg = loadConfig({
+      OPTIONS_PATH: optionsFile({ telegram_bot_token: "t", telegram_chat_id: "-100123", telegram_messages: ["stock", "delivery"] }),
+    });
+    const w = cfg.warnings.join(" | ");
+    expect(w).toMatch(/status messages go to no destination/);
+    expect(w).toMatch(/digest messages go to no destination/);
+    expect(w).not.toMatch(/stock messages go to no destination/);
+  });
+
+  it("does not warn when another destination takes the kind", () => {
+    const cfg = loadConfig({
+      OPTIONS_PATH: optionsFile({ telegram_bot_token: "t", telegram_chat_id: "-100123", telegram_messages: ["stock"], ha_notify_service: "notify.x" }),
+    });
+    expect(cfg.warnings.join(" | ")).not.toMatch(/go to no destination/);
+  });
+
+  it("are optional in config.yaml", () => {
+    const yaml = readText(new URL("../config.yaml", import.meta.url), "utf8");
+    for (const key of ["telegram_messages", "slack_messages", "ha_notify_messages"]) {
+      expect(yaml).toMatch(new RegExp(`\\n  ${key}:\\n    - "list\\(stock\\|delivery\\|digest\\|status\\|test\\)\\?"`));
+    }
+  });
+});

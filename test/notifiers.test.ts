@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import { formatSoldOut, formatStatus, formatStockAlert, plainText } from "../src/format.js";
+import { formatReminder, formatSoldOut, formatStatus, formatStockAlert, plainText } from "../src/format.js";
+import { formatDeliveryAlert } from "../src/delivery.js";
 import { buildNotifiers, sendAll } from "../src/notifiers/index.js";
 import { createHaNotify } from "../src/notifiers/ha.js";
 import { createSlack } from "../src/notifiers/slack.js";
 import { createTelegram } from "../src/notifiers/telegram.js";
-import type { AlertMessage, Notifier } from "../src/types.js";
+import type { AlertMessage, MessageKind, Notifier } from "../src/types.js";
 import { duoItem, fakeServer } from "./helpers.js";
 
 const nightSky = duoItem("MK2G4X/A", "Night Sky 512GB");
-const msg: AlertMessage = { title: "🟢 iPhone Duo in stock (Apple SG)", lines: ["Night Sky 512GB: Orchard Road (Available Today)"], url: nightSky.buyUrl };
+const msg: AlertMessage = { title: "🟢 iPhone Duo in stock (Apple SG)", lines: ["Night Sky 512GB: Orchard Road (Available Today)"], url: nightSky.buyUrl, kind: "stock" };
 
 let servers: { close(): Promise<void> }[] = [];
 afterEach(async () => {
@@ -93,8 +94,8 @@ describe("format", () => {
   });
 
   it("formats sold-out and status messages", () => {
-    expect(formatSoldOut([nightSky])).toEqual({ title: "⚪ iPhone Duo sold out (Apple SG)", lines: ["Night Sky 512GB"] });
-    expect(formatStatus("HypeBot test alert", "Alerts are working.")).toEqual({ title: "HypeBot test alert", lines: ["Alerts are working."] });
+    expect(formatSoldOut([nightSky])).toEqual({ title: "⚪ iPhone Duo sold out (Apple SG)", lines: ["Night Sky 512GB"], kind: "stock" });
+    expect(formatStatus("HypeBot test alert", "Alerts are working.")).toEqual({ title: "HypeBot test alert", lines: ["Alerts are working."], kind: "status" });
   });
 });
 
@@ -211,5 +212,48 @@ describe("buildNotifiers", () => {
     const cfg = loadConfig({ OPTIONS_PATH: missing, HA_NOTIFY_SERVICE: "notify.x" });
     expect(buildNotifiers(cfg, {}).map((n) => n.name)).toEqual([]);
     expect(buildNotifiers(cfg, { SUPERVISOR_TOKEN: "s" }).map((n) => n.name)).toEqual(["ha_notify"]);
+  });
+});
+
+describe("message kinds", () => {
+  it("every formatter sets the kind", () => {
+    expect(formatStockAlert([{ item: nightSky, stores: [{ name: "Orchard Road", quote: "x" }] }]).kind).toBe("stock");
+    expect(formatReminder([{ item: nightSky, stores: [{ name: "Orchard Road", quote: "x" }] }]).kind).toBe("stock");
+    expect(formatSoldOut([nightSky]).kind).toBe("stock");
+    expect(formatStatus("⚠️ x", "y").kind).toBe("status");
+    expect(formatDeliveryAlert([{ item: nightSky, from: { date: "2027-01-25", label: "a" }, to: { date: "2027-01-18", label: "b" } }]).kind).toBe("delivery");
+  });
+});
+
+describe("routing", () => {
+  const recorder = (name: string, kinds?: MessageKind[]) => {
+    const got: string[] = [];
+    const n: Notifier = { name, send: async (m) => void got.push(m.kind), ...(kinds ? { kinds: new Set(kinds) } : {}) };
+    return { n, got };
+  };
+
+  it("only sends a kind to destinations that accept it", async () => {
+    const tg = recorder("telegram", ["stock", "delivery"]);
+    const ha = recorder("ha_notify");
+    for (const kind of ["stock", "status", "digest", "delivery", "test"] as MessageKind[]) {
+      await sendAll([tg.n, ha.n], { title: kind, lines: [], kind });
+    }
+    expect(tg.got).toEqual(["stock", "delivery"]);
+    expect(ha.got).toEqual(["stock", "status", "digest", "delivery", "test"]);
+  });
+
+  it("everywhere: true ignores the routing (for --test-notify)", async () => {
+    const tg = recorder("telegram", ["stock"]);
+    await sendAll([tg.n], { title: "t", lines: [], kind: "test" }, { everywhere: true });
+    expect(tg.got).toEqual(["test"]);
+  });
+
+  it("buildNotifiers applies the per-destination settings", async () => {
+    const cfg = loadConfig({ OPTIONS_PATH: "/nonexistent/options.json", TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "1", HA_NOTIFY_SERVICE: "notify.x" });
+    cfg.telegramMessages = ["stock", "delivery"];
+    const [ha, tg] = buildNotifiers(cfg, { SUPERVISOR_TOKEN: "s" });
+    expect(ha.name).toBe("ha_notify");
+    expect([...(ha.kinds ?? [])].sort()).toEqual(["delivery", "digest", "status", "stock", "test"]);
+    expect([...(tg.kinds ?? [])].sort()).toEqual(["delivery", "stock"]);
   });
 });

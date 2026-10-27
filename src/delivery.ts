@@ -44,6 +44,7 @@ export function formatDeliveryAlert(changes: DeliveryChange[]): AlertMessage {
   return {
     title: oneProduct ? `📦 ${items[0].productName} delivery moved earlier${shop}` : `📦 Delivery dates moved earlier${shop}`,
     lines: changes.map((c) => `${oneProduct ? "" : `${c.item.productName} `}${c.item.variantName}: ${c.to.label} (was ${c.from.label})`),
+    kind: "delivery",
     ...(changes.length === 1 ? { url: changes[0].item.buyUrl } : {}),
   };
 }

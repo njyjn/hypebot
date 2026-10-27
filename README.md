@@ -93,6 +93,25 @@ Set `buy_link_base` to your EPP store address to land in that store instead
 (open the EPP store once in your browser so its Shopping Agreement is
 accepted).
 
+### Choosing which messages go where
+
+Each destination can take only some kinds of message, e.g. a Telegram
+channel that should only hear "it's in stock" while problems go to your
+phone. Pick the kinds under `telegram_messages`, `slack_messages` and
+`ha_notify_messages`; leave a list empty to send that destination everything.
+
+| Kind | Messages |
+|---|---|
+| `stock` | 🟢 in stock, 🔁 still in stock, ⚪ sold out |
+| `delivery` | 📦 delivery date moved earlier |
+| `digest` | 📊 daily mood digest or daily summary (in `daily_summary` mode this carries the day's drops) |
+| `status` | ⚠️/✅ problems and recoveries: can't reach Apple, Apple refusing checks, can't find models, mood off |
+| `test` | the startup test alert |
+
+For example, a Telegram channel with `telegram_messages: [stock, delivery]`
+and your phone left on everything. If a kind ends up going nowhere, the log
+says so at startup. `--test-notify` always tests every destination.
+
 ### Daily summary instead of instant alerts
 
 With `notify_mode: daily_summary`, stock drops, still-in-stock reminders,

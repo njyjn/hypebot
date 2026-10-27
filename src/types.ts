@@ -22,6 +22,7 @@ export interface WatchItem {
 
 export interface StoreStock {
   name: string;
+  kinds?: Set<MessageKind>; // unset = every kind
   quote: string; // the shop's own wording, e.g. "Available Today"
 }
 
@@ -48,16 +49,22 @@ export interface Source {
   deliveryDates?(items: WatchItem[]): Promise<Map<string, DeliveryDate>>;
 }
 
+/** What a message is about; each destination can choose which kinds it gets. */
+export type MessageKind = "stock" | "delivery" | "digest" | "status" | "test";
+export const MESSAGE_KINDS: MessageKind[] = ["stock", "delivery", "digest", "status", "test"];
+
 export interface AlertMessage {
   title: string;
   lines: string[];
   url?: string; // where tapping the alert goes
   links?: { label: string; url: string }[]; // one buy link per model when several restock at once
   urgent?: boolean; // stock alerts: delivered as loudly as the destination allows
+  kind: MessageKind;
 }
 
 export interface Notifier {
   name: string;
+  kinds?: Set<MessageKind>; // unset = every kind
   /** Rejects if the destination did not accept the message. */
   send(msg: AlertMessage): Promise<void>;
 }

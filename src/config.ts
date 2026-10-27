@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { APPLE_SG_MODELS } from "./sources/apple-sg-models.js";
 import type { MoodConfig } from "./mood/types.js";
-import type { WatchConfig } from "./types.js";
+import { MESSAGE_KINDS, type MessageKind, type WatchConfig } from "./types.js";
 
 export type HaNotifyPriority = "normal" | "time_sensitive" | "critical";
 export type NotifyMode = "instant" | "daily_summary";
@@ -23,6 +23,10 @@ export interface Config {
   slackChannel: string;
   telegramBotToken: string;
   telegramChatId: string;
+  /** Which kinds of message each destination gets (default: all). */
+  telegramMessages: MessageKind[];
+  slackMessages: MessageKind[];
+  haNotifyMessages: MessageKind[];
   statePath: string;
   trackDeliveryDates: boolean;
   deliveryStatePath: string;
@@ -66,6 +70,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const strList = (key: string) =>
     Array.isArray(raw[key]) ? (raw[key] as unknown[]).filter((s): s is string => typeof s === "string" && s.trim() !== "") : [];
 
+  // A missing or empty list means every kind: existing setups keep getting
+  // everything, and clearing the list never silently mutes a destination.
+  const kinds = (key: string): MessageKind[] => {
+    const picked = Array.isArray(raw[key]) ? MESSAGE_KINDS.filter((k) => (raw[key] as unknown[]).includes(k)) : [];
+    return picked.length > 0 ? picked : [...MESSAGE_KINDS];
+  };
+
   const interval = Number(pick("interval_seconds"));
   const intervalSeconds = Number.isFinite(interval) && interval > 0
     ? Math.min(MAX_INTERVAL, Math.max(MIN_INTERVAL, Math.round(interval)))
@@ -108,6 +119,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     slackChannel: str("slack_channel"),
     telegramBotToken: str("telegram_bot_token"),
     telegramChatId: str("telegram_chat_id"),
+    telegramMessages: kinds("telegram_messages"),
+    slackMessages: kinds("slack_messages"),
+    haNotifyMessages: kinds("ha_notify_messages"),
     statePath: env.STATE_PATH || "/data/state.json",
     trackDeliveryDates: pick("track_delivery_dates") === undefined ? true : bool("track_delivery_dates"),
     deliveryStatePath: join(dirname(env.STATE_PATH || "/data/state.json"), "delivery.json"),
@@ -127,6 +141,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const anyDestination = cfg.haNotifyService || pairs.some(([, a, b]) => a && b);
   if (!anyDestination) cfg.warnings.push("No alert destination configured; only Home Assistant sensors will update");
+  else {
+    const routes: MessageKind[][] = [
+      ...(cfg.haNotifyService ? [cfg.haNotifyMessages] : []),
+      ...(cfg.slackBotToken && cfg.slackChannel ? [cfg.slackMessages] : []),
+      ...(cfg.telegramBotToken && cfg.telegramChatId ? [cfg.telegramMessages] : []),
+    ];
+    for (const k of MESSAGE_KINDS) {
+      if (!routes.some((r) => r.includes(k))) cfg.warnings.push(`${k} messages go to no destination (check telegram_messages, slack_messages, ha_notify_messages)`);
+    }
+  }
 
   return cfg;
 }

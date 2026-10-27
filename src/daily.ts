@@ -45,7 +45,7 @@ export async function maybeSendDaily(ctx: DailyCtx): Promise<boolean> {
     }
   }
   const day = new Intl.DateTimeFormat("en-GB", { timeZone: ctx.timeZone, weekday: "short", day: "numeric", month: "short" }).format(new Date(now)).replace(",", "");
-  await sendAll(ctx.notifiers, { title: `📊 HypeBot · ${day}`, lines });
+  await sendAll(ctx.notifiers, { title: `📊 HypeBot · ${day}`, lines, kind: "digest" });
   clearReported(ctx.summary.log);
   save(ctx);
   return true;
