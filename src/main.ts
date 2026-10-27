@@ -7,6 +7,7 @@ import { createAppleSg } from "./sources/apple-sg.js";
 import { loadState } from "./state.js";
 import type { Source, WatchConfig, WatchItem } from "./types.js";
 import { loadHealth } from "./health.js";
+import { setProxy } from "./http.js";
 import { loadModelCache, pickCachedModels, saveModelCache } from "./model-cache.js";
 import { cooldownLeftMs, firstCheckDelayMs, loadSchedule, saveSchedule } from "./schedule.js";
 import { callAiTask } from "./mood/analyse.js";
@@ -76,6 +77,9 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+
+  setProxy(cfg.proxyUrl);
+  if (cfg.proxyUrl) console.log(`Apple requests go through proxy ${cfg.proxyUrl}`);
 
   // Resolve names to part numbers, one group per shop.
   const groups: Group[] = [];

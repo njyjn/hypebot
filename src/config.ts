@@ -12,6 +12,7 @@ export interface Config {
   intervalSeconds: number;
   watch: WatchConfig[]; // typed `watch` entries plus picked `models`
   buyLinkBase: string; // Apple store front used for links in alerts and sensors
+  proxyUrl?: string; // http proxy for Apple requests (e.g. a VPN app); unset = direct
   appleSgStores: string[];
   notifySoldOut: boolean;
   haNotifyPriority: HaNotifyPriority; // how loudly stock alerts arrive on phones
@@ -106,8 +107,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     buyLinkBase = DEFAULT_BUY_LINK_BASE;
   }
 
+  let proxyUrl: string | undefined;
+  const rawProxy = str("proxy_url");
+  if (rawProxy) {
+    try {
+      const u = new URL(rawProxy);
+      if (u.protocol !== "http:" || !u.hostname || !u.port) throw new Error("not http://host:port");
+      proxyUrl = `${u.protocol}//${u.host}`;
+    } catch {
+      warnings.push(`proxy_url must look like http://host:port; ignoring it, so Apple requests go direct`);
+    }
+  }
+
   const cfg: Config = {
     intervalSeconds,
+    proxyUrl,
     watch,
     buyLinkBase,
     appleSgStores: strList("apple_sg_stores"),

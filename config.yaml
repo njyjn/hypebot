@@ -1,5 +1,5 @@
 name: "HypeBot"
-version: "0.9.0"
+version: "0.10.0"
 slug: "hypebot"
 description: "Alerts when hard-to-find products are in stock for store pickup"
 url: "https://github.com/njyjn/hypebot"
@@ -18,6 +18,7 @@ options:
     - "iPhone Duo / Star White / 256GB"
   watch: []
   buy_link_base: "https://www.apple.com/sg"
+  proxy_url: ""
   apple_sg_stores: []
   notify_sold_out: false
   remind_every_minutes: 0
@@ -49,6 +50,7 @@ schema:
       variants:
         - "str"
   buy_link_base: "url?"
+  proxy_url: "str?"
   apple_sg_stores:
     - "str?"
   notify_sold_out: "bool"

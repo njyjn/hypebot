@@ -310,6 +310,14 @@ describe("cool-down after Apple's 541", () => {
     expect(check).toHaveBeenCalledTimes(2);
   });
 
+  it("does not start a cool-down when the proxy is down", async () => {
+    const { c } = ctx([new Error("proxy http://x:8888 unreachable (ECONNREFUSED)")]);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCheck(c);
+    err.mockRestore();
+    expect(c.schedule!.data.cooldownUntil ?? {}).toEqual({});
+  });
+
   it("keeps the normal backoff for other errors", async () => {
     const { c } = ctx([new Error("Apple SG did not return stock data (got a web page instead)")]);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
