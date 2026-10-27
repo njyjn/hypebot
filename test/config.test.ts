@@ -340,3 +340,25 @@ describe("restart state files", () => {
     expect(cfg.modelCachePath).toBe("/data/models.json");
   });
 });
+
+describe("proxy_url", () => {
+  it("keeps a valid http proxy and normalises it", () => {
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ proxy_url: "http://abc-proton-proxy:8888" }) }).proxyUrl).toBe("http://abc-proton-proxy:8888");
+    expect(loadConfig({ OPTIONS_PATH: optionsFile({ proxy_url: "HTTP://abc-proton-proxy:8888/" }) }).proxyUrl).toBe("http://abc-proton-proxy:8888");
+  });
+
+  it("ignores other schemes and garbage with a warning", () => {
+    for (const bad of ["socks5://x:1080", "not a url"]) {
+      const cfg = loadConfig({ OPTIONS_PATH: optionsFile({ proxy_url: bad }) });
+      expect(cfg.proxyUrl).toBeUndefined();
+      expect(cfg.warnings.join(" ")).toMatch(/proxy_url/);
+    }
+  });
+
+  it("is off and quiet when missing, and optional in config.yaml", () => {
+    const cfg = loadConfig({ OPTIONS_PATH: missing });
+    expect(cfg.proxyUrl).toBeUndefined();
+    expect(cfg.warnings.join(" ")).not.toMatch(/proxy_url/);
+    expect(readText(new URL("../config.yaml", import.meta.url), "utf8")).toContain('proxy_url: "str?"');
+  });
+});

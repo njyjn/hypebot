@@ -262,6 +262,24 @@ loading after a reboot), HypeBot keeps checking and starts mood once it
 appears, alerting only if it's still missing after 10 minutes. History is kept in
 `/data/mood.json`.
 
+## Sending Apple requests through a VPN
+
+If Apple starts refusing your home connection, the block also hits your own
+phone and laptop at home, just when you want to buy. Setting `proxy_url`
+sends HypeBot's Apple requests (stock, delivery dates, model list) through
+an HTTP proxy instead, e.g. the **Proton Proxy** app from the same
+repository: `proxy_url: http://<proton-proxy hostname>:8888`. Alerts,
+Home Assistant, the AI Task, Reddit and news stay direct.
+
+There is no fallback: if the proxy is down, checks fail ("proxy … unreachable")
+and you get the usual "HypeBot is blind" alert after 30 minutes, rather than
+HypeBot quietly switching back to your home IP.
+
+Try it before relying on it: VPN IPs are shared and Apple may refuse them
+more than your home IP. Set `proxy_url`, restart once, and compare
+`sensor.hypebot_apple_sg_health` over the next hour. If it's worse, clear
+`proxy_url`.
+
 ## When things go wrong
 
 - **Apple refuses or fails a check:** HypeBot logs it, backs off (30 minutes
