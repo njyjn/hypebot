@@ -23,6 +23,7 @@ export function formatStockAlert(news: Changes["newlyInStock"]): AlertMessage {
     title: single ? `🟢 ${items[0].productName} in stock${shopSuffix(items)}` : `🟢 Stock alert${shopSuffix(items)}`,
     lines: news.map(({ item, stores }) => `${label(item)}: ${storeList(stores)}`),
     urgent: true,
+    kind: "stock",
   };
   if (items.length === 1) {
     msg.url = items[0].buyUrl;
@@ -46,11 +47,12 @@ export function formatSoldOut(items: WatchItem[]): AlertMessage {
   return {
     title: single ? `⚪ ${items[0].productName} sold out${shopSuffix(items)}` : `⚪ Sold out${shopSuffix(items)}`,
     lines: items.map((i) => (single ? i.variantName : `${i.productName} ${i.variantName}`)),
+    kind: "stock",
   };
 }
 
 export function formatStatus(title: string, detail: string): AlertMessage {
-  return { title, lines: [detail] };
+  return { title, lines: [detail], kind: "status" };
 }
 
 /** Plain text body used by every destination. */

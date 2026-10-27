@@ -54,7 +54,7 @@ export async function runMoodCycle(ctx: MoodCtx, state: MoodState): Promise<void
       state.batches.push({ at: now, score, items: fresh.length, themes });
       for (const i of fresh) state.seen[i.id] = now;
       if (state.alerted) {
-        await sendAll(ctx.notifiers, { title: "✅ HypeBot mood is working again", lines: ["The AI Task is answering again."] });
+        await sendAll(ctx.notifiers, { title: "✅ HypeBot mood is working again", lines: ["The AI Task is answering again."], kind: "status" });
       }
       state.failuresInARow = 0;
       state.alerted = false;
@@ -66,6 +66,7 @@ export async function runMoodCycle(ctx: MoodCtx, state: MoodState): Promise<void
         await sendAll(ctx.notifiers, {
           title: "⚠️ HypeBot mood can't reach the AI Task",
           lines: [`The last ${state.failuresInARow} attempts failed. Latest error: ${message(error)}. Stock alerts are not affected.`],
+          kind: "status",
         });
       }
     }
@@ -94,7 +95,7 @@ export async function buildMoodDigest(ctx: MoodCtx, state: MoodState, now: numbe
   const { date } = localClock(now, ctx.timeZone);
   const today = state.batches.filter((b) => localClock(b.at, ctx.timeZone).date === date && b.at <= now);
   const current = score24h(state, now);
-  if (today.length === 0 || !current) return { title: "📊 iPhone Duo mood: no new posts today", lines: [] };
+  if (today.length === 0 || !current) return { title: "📊 iPhone Duo mood: no new posts today", lines: [], kind: "digest" };
   const yesterday = score24h(state, now - DAY)?.score;
   const title = `📊 iPhone Duo mood: ${signed(current.score)} (${moodLabel(current.score)})${yesterday === undefined ? "" : `, was ${signed(yesterday)} yesterday`} · ${current.items} posts`;
 
@@ -107,7 +108,7 @@ export async function buildMoodDigest(ctx: MoodCtx, state: MoodState, now: numbe
     const unique = newestFirst.filter((t, i) => newestFirst.findIndex((u) => u.text === t.text) === i).slice(0, MAX_FALLBACK_THEMES);
     lines = unique.map((t) => (t.url ? `${t.text}: ${t.url}` : t.text));
   }
-  return { title, lines };
+  return { title, lines, kind: "digest" };
 }
 
 /** Run mood in the background. Errors are logged and never reach the stock loop. */

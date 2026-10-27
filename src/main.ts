@@ -56,7 +56,8 @@ async function main() {
 
   if (args.has("--test-notify") || cfg.sendTestAlert) {
     // Urgent like a stock alert, so it shows how loud a real one will be.
-    await sendAll(notifiers, { ...formatStatus("HypeBot test alert", "Alerts are working."), urgent: true });
+    // --test-notify checks every destination; the startup test alert follows the routing.
+    await sendAll(notifiers, { ...formatStatus("HypeBot test alert", "Alerts are working."), urgent: true, kind: "test" }, { everywhere: args.has("--test-notify") });
     console.log(`Test alert sent to: ${notifiers.map((n) => n.name).join(", ") || "nobody (no destinations configured)"}`);
     if (args.has("--test-notify")) return;
   }

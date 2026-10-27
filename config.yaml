@@ -1,5 +1,5 @@
 name: "HypeBot"
-version: "0.7.1"
+version: "0.8.0"
 slug: "hypebot"
 description: "Alerts when hard-to-find products are in stock for store pickup"
 url: "https://github.com/njyjn/hypebot"
@@ -71,3 +71,9 @@ schema:
   mood_digest_time: "match(^\\d{2}:\\d{2}$)?"
   reddit_client_id: "str?"
   reddit_client_secret: "password?"
+  telegram_messages:
+    - "list(stock|delivery|digest|status|test)?"
+  slack_messages:
+    - "list(stock|delivery|digest|status|test)?"
+  ha_notify_messages:
+    - "list(stock|delivery|digest|status|test)?"
